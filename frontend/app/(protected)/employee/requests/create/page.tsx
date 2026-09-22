@@ -3,7 +3,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
-import AddRequestItem from "@/src/components/requests/AddRequestItem";
+import AddRequestItem from "@/src/components/employee/requests/AddRequestItem";
 
 type RequestItem = {
   category_id: string | null;
@@ -144,7 +144,7 @@ export default function CreateRequestPage() {
       // 3. REDIRECT TO REQUEST DETAILS
       // -----------------------------------------
 
-      router.push(`/requests/${request.id}`);
+      router.push(`/employee/requests/${request.id}`);
       router.refresh();
     } catch (err) {
       console.error(

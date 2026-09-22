@@ -20,18 +20,61 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    // 1. Login
+    const { data, error: loginError } =
+      await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) {
-      setError(error.message);
+    if (loginError) {
+      setError(loginError.message);
       setLoading(false);
       return;
     }
 
-    router.push("/dashboard");
+    if (!data.user) {
+      setError("Unable to get logged-in user.");
+      setLoading(false);
+      return;
+    }
+
+    // 2. Get user's role from profiles
+    const { data: profile, error: profileError } =
+      await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", data.user.id)
+        .single();
+
+    if (profileError) {
+      console.error("Profile error:", profileError);
+
+      await supabase.auth.signOut();
+
+      setError("User profile could not be found.");
+      setLoading(false);
+      return;
+    }
+
+    // 3. Redirect based on role
+    switch (profile.role) {
+      case "employee":
+        router.push("/employee/dashboard");
+        break;
+
+      case "approver":
+        router.push("/approver/dashboard");
+        break;
+
+      default:
+        await supabase.auth.signOut();
+
+        setError("Your account has an invalid role.");
+        setLoading(false);
+        return;
+    }
+
     router.refresh();
   }
 

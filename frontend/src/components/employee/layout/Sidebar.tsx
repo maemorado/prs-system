@@ -7,15 +7,17 @@ import { createClient } from "@/src/lib/supabase/client";
 const navigation = [
   {
     name: "Dashboard",
-    href: "employee/dashboard",
+    href: "/employee/dashboard",
   },
   {
     name: "My Requests",
-    href: "/requests",
+    href: "/employee/requests",
+    exact: true,
   },
   {
     name: "Create Request",
     href: "/employee/requests/create",
+    exact: true,
   },
   {
     name: "Profile",
@@ -30,7 +32,12 @@ export default function Sidebar() {
   async function handleLogout() {
     const supabase = createClient();
 
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      console.error("Logout error:", error);
+      return;
+    }
 
     router.push("/auth/login");
     router.refresh();
@@ -56,7 +63,10 @@ export default function Sidebar() {
         }}
       >
         {navigation.map((item) => {
-          const active = pathname === item.href;
+          const active = item.exact
+            ? pathname === item.href
+            : pathname === item.href ||
+              pathname.startsWith(`${item.href}/`);
 
           return (
             <Link

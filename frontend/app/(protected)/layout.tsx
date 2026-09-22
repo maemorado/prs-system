@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
-import DashboardLayout from "@/src/components/layout/DashboardLayout";
 
 export default function ProtectedLayout({
   children,
@@ -19,9 +18,10 @@ export default function ProtectedLayout({
     async function checkUser() {
       const {
         data: { user },
+        error,
       } = await supabase.auth.getUser();
 
-      if (!user) {
+      if (error || !user) {
         router.replace("/auth/login");
         return;
       }
@@ -36,5 +36,5 @@ export default function ProtectedLayout({
     return <p>Loading...</p>;
   }
 
-  return <DashboardLayout>{children}</DashboardLayout>;
+  return <>{children}</>;
 }

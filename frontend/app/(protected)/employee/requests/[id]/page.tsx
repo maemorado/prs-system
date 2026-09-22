@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 
-type Request = {
+type RequestData = {
   id: string;
   request_number: string;
   title: string;
@@ -15,37 +15,121 @@ type Request = {
   submitted_at: string;
 };
 
+type RequestItem = {
+  id: string;
+  item_name: string;
+  description: string | null;
+  quantity: number;
+  estimated_unit_price: number;
+  estimated_total: number;
+  category_id: string | null;
+};
+
 export default function RequestDetailsPage() {
   const params = useParams();
+  const requestId = params.id as string;
 
-  const [request, setRequest] = useState<Request | null>(null);
+  const [request, setRequest] = useState<RequestData | null>(null);
+  const [items, setItems] = useState<RequestItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    async function loadRequest() {
+  const loadRequest = useCallback(async () => {
       const supabase = createClient();
 
-      const { data, error } = await supabase
-        .from("purchase_requests")
-        .select(
-          "id, request_number, title, purpose, priority, status, total_amount, submitted_at"
-        )
-        .eq("id", params.id)
-        .single();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (error) {
-        console.error(error);
+      if (!user) {
+        setError("You are not authenticated.");
+        setLoading(false);
+        return;
       }
 
-      setRequest(data);
+      const { data: requestData, error: requestError } = await supabase
+        .from("purchase_requests")
+        .select(
+          `
+          id,
+          request_number,
+          title,
+          purpose,
+          priority,
+          status,
+          total_amount,
+          submitted_at
+        `
+        )
+        .eq("id", requestId)
+        .eq("requested_by", user.id)
+        .single();
+
+      if (requestError) {
+        console.error("Request error:", requestError);
+        setError(requestError.message);
+        setLoading(false);
+        return;
+      }
+
+      const { data: itemData, error: itemError } = await supabase
+        .from("purchase_request_items")
+        .select(
+          `
+          id,
+          item_name,
+          description,
+          quantity,
+          estimated_unit_price,
+          estimated_total,
+          category_id
+        `
+        )
+        .eq("request_id", requestId)
+        .order("created_at", { ascending: true });
+
+      if (itemError) {
+        console.error("Items error:", itemError);
+        setError(itemError.message);
+        setLoading(false);
+        return;
+      }
+
+      setRequest(requestData);
+      setItems(itemData ?? []);
       setLoading(false);
+    }, [requestId]);
+
+  useEffect(() => {
+    loadRequest();
+  }, [loadRequest]);
+
+  // ==========================================
+  // REFETCH WHEN THE PAGE REGAINS FOCUS
+  // ==========================================
+  useEffect(() => {
+    function handleFocus() {
+      loadRequest();
     }
 
-    loadRequest();
-  }, [params.id]);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [loadRequest]);
 
   if (loading) {
     return <p>Loading request...</p>;
+  }
+
+  if (error) {
+    return (
+      <div>
+        <h1>Request Details</h1>
+        <p>{error}</p>
+      </div>
+    );
   }
 
   if (!request) {
@@ -53,37 +137,108 @@ export default function RequestDetailsPage() {
   }
 
   return (
-    <div>
-      <h1>{request.request_number}</h1>
+    <div style={{ padding: "24px" }}>
+      <h1>Request Details</h1>
 
-      <div style={{ marginTop: 30 }}>
+      <div
+        style={{
+          marginTop: "20px",
+          padding: "20px",
+          border: "1px solid #ddd",
+          borderRadius: "10px",
+        }}
+      >
         <h2>{request.title}</h2>
 
-        <p>{request.purpose}</p>
-
         <p>
-          Priority: <strong>{request.priority}</strong>
+          <strong>Request Number:</strong> {request.request_number}
         </p>
 
         <p>
-          Status: <strong>{request.status}</strong>
+          <strong>Purpose:</strong> {request.purpose}
         </p>
 
         <p>
-          Total: ₱
-          {Number(request.total_amount).toLocaleString()}
+          <strong>Priority:</strong> {request.priority}
+        </p>
+
+        <p>
+          <strong>Status:</strong> {request.status}
+        </p>
+
+        <p>
+          <strong>Submitted:</strong>{" "}
+          {new Date(request.submitted_at).toLocaleString()}
         </p>
       </div>
 
-      <hr style={{ margin: "30px 0" }} />
+      <div style={{ marginTop: "30px" }}>
+        <h2>Requested Items</h2>
 
-      <h2>Request Items</h2>
+        {items.length === 0 ? (
+          <p>No items found.</p>
+        ) : (
+          <div style={{ marginTop: "15px" }}>
+            {items.map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  padding: "16px",
+                  marginBottom: "12px",
+                  border: "1px solid #ddd",
+                  borderRadius: "10px",
+                }}
+              >
+                <h3>{item.item_name}</h3>
 
-      <p>No items added yet.</p>
+                {item.description && (
+                  <p>{item.description}</p>
+                )}
 
-      <button>
-        Add Item
-      </button>
+                <p>
+                  <strong>Quantity:</strong> {item.quantity}
+                </p>
+
+                <p>
+                  <strong>Unit Price:</strong>{" "}
+                  ₱{Number(item.estimated_unit_price).toLocaleString(
+                    "en-PH",
+                    {
+                      minimumFractionDigits: 2,
+                    }
+                  )}
+                </p>
+
+                <p>
+                  <strong>Total:</strong>{" "}
+                  ₱{Number(item.estimated_total).toLocaleString(
+                    "en-PH",
+                    {
+                      minimumFractionDigits: 2,
+                    }
+                  )}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          marginTop: "30px",
+          padding: "20px",
+          border: "1px solid #ddd",
+          borderRadius: "10px",
+        }}
+      >
+        <h2>
+          Total Amount: ₱
+          {Number(request.total_amount).toLocaleString("en-PH", {
+            minimumFractionDigits: 2,
+          })}
+        </h2>
+      </div>
     </div>
   );
 }
