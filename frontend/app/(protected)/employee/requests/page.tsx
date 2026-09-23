@@ -3,6 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/src/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { FilePlus2, Inbox } from "lucide-react";
+import { PageHeader } from "@/src/components/shared/page-header";
+import { PriorityBadge, StatusBadge } from "@/src/components/shared/badges";
+import { EmptyState, ErrorState, ListSkeleton } from "@/src/components/shared/state";
+import { formatAmount, formatDate } from "@/src/lib/format";
 
 type PurchaseRequest = {
   id: string;
@@ -21,22 +28,22 @@ export default function RequestsPage() {
   const [error, setError] = useState("");
 
   const loadRequests = useCallback(async () => {
-      const supabase = createClient();
+    const supabase = createClient();
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      if (!user) {
-        setError("You are not authenticated.");
-        setLoading(false);
-        return;
-      }
+    if (!user) {
+      setError("You are not authenticated.");
+      setLoading(false);
+      return;
+    }
 
-      const { data, error } = await supabase
-        .from("purchase_requests")
-        .select(
-          `
+    const { data, error } = await supabase
+      .from("purchase_requests")
+      .select(
+        `
           id,
           request_number,
           title,
@@ -46,22 +53,23 @@ export default function RequestsPage() {
           total_amount,
           submitted_at
         `
-        )
-        .eq("requested_by", user.id)
-        .order("created_at", { ascending: false });
+      )
+      .eq("requested_by", user.id)
+      .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error("Failed to load requests:", error);
-        setError(error.message);
-        setLoading(false);
-        return;
-      }
-
-      setRequests(data ?? []);
+    if (error) {
+      console.error("Failed to load requests:", error);
+      setError(error.message);
       setLoading(false);
-    }, []);
+      return;
+    }
+
+    setRequests(data ?? []);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadRequests();
   }, [loadRequests]);
 
@@ -81,129 +89,97 @@ export default function RequestsPage() {
   }, [loadRequests]);
 
   if (loading) {
-    return <p>Loading requests...</p>;
+    return (
+      <div className="mx-auto w-full max-w-5xl space-y-6">
+        <PageHeader title="My Requests" />
+        <ListSkeleton />
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <div>
-        <h1>My Requests</h1>
-        <p>{error}</p>
+      <div className="mx-auto w-full max-w-5xl space-y-6">
+        <PageHeader title="My Requests" />
+        <ErrorState message={error} onRetry={loadRequests} />
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "24px" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
+    <div className="mx-auto w-full max-w-5xl space-y-6">
+      <PageHeader
+        title="My Requests"
+        description="View and track your purchase requests."
       >
-        <div>
-          <h1>My Requests</h1>
-          <p>View and track your purchase requests.</p>
-        </div>
-
-        <Link href="/employee/requests/create">
+        <Button
+          render={<Link href="/employee/requests/create" />}
+        >
+          <FilePlus2 />
           Create Request
-        </Link>
-      </div>
+        </Button>
+      </PageHeader>
 
-      <div style={{ marginTop: "30px" }}>
-        {requests.length === 0 ? (
-          <div>
-            <p>You don't have any purchase requests yet.</p>
-
-            <Link href="/employee/requests/create">
+      {requests.length === 0 ? (
+        <EmptyState
+          icon={Inbox}
+          title="No purchase requests yet"
+          description="You don't have any purchase requests yet. Create one to get started."
+          action={
+            <Button
+              render={<Link href="/employee/requests/create" />}
+            >
+              <FilePlus2 />
               Create your first request
-            </Link>
-          </div>
-        ) : (
-          requests.map((request) => (
+            </Button>
+          }
+        />
+      ) : (
+        <div className="space-y-3">
+          {requests.map((request) => (
             <Link
               key={request.id}
               href={`/employee/requests/${request.id}`}
-              style={{
-                display: "block",
-                textDecoration: "none",
-                color: "inherit",
-                marginBottom: "15px",
-              }}
+              className="block transition-colors"
             >
-              <div
-                style={{
-                  padding: "20px",
-                  border: "1px solid #ddd",
-                  borderRadius: "10px",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: "20px",
-                  }}
-                >
-                  <div>
-                    <h2>{request.title}</h2>
+              <Card className="transition-colors hover:bg-muted/40">
+                <CardContent className="space-y-3 py-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-sm font-semibold text-foreground">
+                        {request.title}
+                      </p>
 
-                    <p>
-                      {request.request_number}
-                    </p>
+                      <p className="text-xs text-muted-foreground">
+                        {request.request_number}
+                      </p>
 
-                    <p>
-                      {request.purpose}
-                    </p>
+                      <p className="line-clamp-2 text-sm text-muted-foreground">
+                        {request.purpose}
+                      </p>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-2">
+                      <PriorityBadge priority={request.priority} />
+                      <StatusBadge status={request.status} />
+                    </div>
                   </div>
 
-                  <div>
-                    <strong>
-                      {request.status}
-                    </strong>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                    <span className="text-xs text-muted-foreground">
+                      Submitted {formatDate(request.submitted_at)}
+                    </span>
+
+                    <span className="text-sm font-semibold text-foreground tabular-nums">
+                      {formatAmount(request.total_amount)}
+                    </span>
                   </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginTop: "15px",
-                  }}
-                >
-                  <span>
-                    Priority: {request.priority}
-                  </span>
-
-                  <strong>
-                    ₱
-                    {Number(request.total_amount).toLocaleString(
-                      "en-PH",
-                      {
-                        minimumFractionDigits: 2,
-                      }
-                    )}
-                  </strong>
-                </div>
-
-                <p
-                  style={{
-                    marginTop: "10px",
-                    fontSize: "14px",
-                  }}
-                >
-                  Submitted:{" "}
-                  {new Date(
-                    request.submitted_at
-                  ).toLocaleString()}
-                </p>
-              </div>
+                </CardContent>
+              </Card>
             </Link>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -3,6 +3,16 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
+import { Trash2 } from "lucide-react";
+import { PageHeader } from "@/src/components/shared/page-header";
+import { ErrorState } from "@/src/components/shared/state";
+import { formatAmount } from "@/src/lib/format";
 import AddRequestItem from "@/src/components/employee/requests/AddRequestItem";
 
 type RequestItem = {
@@ -25,50 +35,64 @@ export default function CreateRequestPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Calculate total amount
   const totalAmount = useMemo(() => {
     return items.reduce(
       (total, item) =>
-        total + item.quantity * item.estimated_unit_price,
+        total +
+        Number(item.quantity) * Number(item.estimated_unit_price),
       0
     );
   }, [items]);
 
-  // Add item to the list
   function handleAddItem(item: RequestItem) {
     setItems((current) => [...current, item]);
   }
 
-  // Remove item from the list
   function handleRemoveItem(index: number) {
     setItems((current) =>
       current.filter((_, itemIndex) => itemIndex !== index)
     );
   }
 
-  // Submit purchase request
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
-    setError("");
-
-    // Validate items
-    if (items.length === 0) {
-      setError("Please add at least one item.");
+    if (loading) {
       return;
     }
 
-    // Validate title
+    setError("");
+
     if (!title.trim()) {
       setError("Please enter a request title.");
       return;
     }
 
-    // Validate purpose
     if (!purpose.trim()) {
       setError("Please enter the purpose of the request.");
+      return;
+    }
+
+    if (items.length === 0) {
+      setError("Please add at least one item.");
+      return;
+    }
+
+    const invalidItem = items.find(
+      (item) =>
+        !item.item_name.trim() ||
+        !Number.isFinite(Number(item.quantity)) ||
+        Number(item.quantity) <= 0 ||
+        !Number.isFinite(Number(item.estimated_unit_price)) ||
+        Number(item.estimated_unit_price) < 0
+    );
+
+    if (invalidItem) {
+      setError(
+        "Please make sure all items have a valid name, quantity, and estimated unit price."
+      );
       return;
     }
 
@@ -77,30 +101,32 @@ export default function CreateRequestPage() {
     try {
       const supabase = createClient();
 
-      // Get currently logged-in user
       const {
-        data: { user },
-        error: userError,
+        data: { user: authUser },
+        error: authError,
       } = await supabase.auth.getUser();
 
-      if (userError) {
-        throw userError;
+      if (authError) {
+        throw authError;
       }
 
-      if (!user) {
+      if (!authUser) {
         router.push("/auth/login");
         return;
       }
 
-      // -----------------------------------------
-      // 1. CREATE PURCHASE REQUEST
-      // -----------------------------------------
+      const authenticatedUserId = authUser.id;
+
+      console.log(
+        "Creating purchase request for auth user:",
+        authenticatedUserId
+      );
 
       const { data: request, error: requestError } =
         await supabase
           .from("purchase_requests")
           .insert({
-            requested_by: user.id,
+            requested_by: authenticatedUserId,
             title: title.trim(),
             purpose: purpose.trim(),
             priority,
@@ -110,6 +136,11 @@ export default function CreateRequestPage() {
           .single();
 
       if (requestError) {
+        console.error(
+          "Purchase request insert error:",
+          requestError
+        );
+
         throw requestError;
       }
 
@@ -119,17 +150,16 @@ export default function CreateRequestPage() {
         );
       }
 
-      // -----------------------------------------
-      // 2. CREATE PURCHASE REQUEST ITEMS
-      // -----------------------------------------
-
       const requestItems = items.map((item) => ({
         request_id: request.id,
         category_id: item.category_id,
         item_name: item.item_name.trim(),
-        description: item.description?.trim() || null,
-        quantity: item.quantity,
-        estimated_unit_price: item.estimated_unit_price,
+        description:
+          item.description?.trim() || null,
+        quantity: Number(item.quantity),
+        estimated_unit_price: Number(
+          item.estimated_unit_price
+        ),
       }));
 
       const { error: itemsError } = await supabase
@@ -137,14 +167,31 @@ export default function CreateRequestPage() {
         .insert(requestItems);
 
       if (itemsError) {
+        console.error(
+          "Purchase request items insert error:",
+          itemsError
+        );
+
+        const { error: cleanupError } = await supabase
+          .from("purchase_requests")
+          .delete()
+          .eq("id", request.id)
+          .eq("requested_by", authenticatedUserId);
+
+        if (cleanupError) {
+          console.error(
+            "Request cleanup error:",
+            cleanupError
+          );
+        }
+
         throw itemsError;
       }
 
-      // -----------------------------------------
-      // 3. REDIRECT TO REQUEST DETAILS
-      // -----------------------------------------
+      router.push(
+        `/employee/requests/${request.id}`
+      );
 
-      router.push(`/employee/requests/${request.id}`);
       router.refresh();
     } catch (err) {
       console.error(
@@ -152,305 +199,231 @@ export default function CreateRequestPage() {
         err
       );
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to create purchase request."
-      );
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError(
+          "Failed to create purchase request."
+        );
+      }
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main style={{ padding: 40 }}>
-      <h1>Create Purchase Request</h1>
+    <div className="mx-auto w-full max-w-3xl space-y-6">
+      <PageHeader
+        title="Create Purchase Request"
+        description="Fill in the request details and add the items you need."
+      />
 
-      <p>
-        Create a new procurement request.
-      </p>
+      {error && (
+        <ErrorState
+          message={error}
+          onRetry={() => setError("")}
+        />
+      )}
 
-      {/* 
-        IMPORTANT:
-        There is only ONE form on this page.
-      */}
-      <form onSubmit={handleSubmit}>
-        {/* =========================================
-            REQUEST INFORMATION
-        ========================================== */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Request Information</CardTitle>
+          </CardHeader>
 
-        <section>
-          <h2>Request Information</h2>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="title">Request Title</Label>
 
-          {/* Title */}
-          <div style={{ marginBottom: 20 }}>
-            <label
-              htmlFor="title"
-              style={{
-                display: "block",
-                marginBottom: 5,
-              }}
-            >
-              Request Title
-            </label>
+              <Input
+                id="title"
+                type="text"
+                value={title}
+                onChange={(event) =>
+                  setTitle(event.target.value)
+                }
+                placeholder="e.g. Computer Laboratory Equipment"
+                required
+                disabled={loading}
+              />
+            </div>
 
-            <input
-              id="title"
-              type="text"
-              value={title}
-              onChange={(event) =>
-                setTitle(event.target.value)
-              }
-              placeholder="e.g. Computer Laboratory Equipment"
-              required
-              style={{
-                width: "100%",
-                maxWidth: 600,
-                padding: 10,
-              }}
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="purpose">Purpose</Label>
 
-          {/* Purpose */}
-          <div style={{ marginBottom: 20 }}>
-            <label
-              htmlFor="purpose"
-              style={{
-                display: "block",
-                marginBottom: 5,
-              }}
-            >
-              Purpose
-            </label>
+              <Textarea
+                id="purpose"
+                value={purpose}
+                onChange={(event) =>
+                  setPurpose(event.target.value)
+                }
+                placeholder="Explain the purpose of the request..."
+                required
+                disabled={loading}
+                rows={5}
+              />
+            </div>
 
-            <textarea
-              id="purpose"
-              value={purpose}
-              onChange={(event) =>
-                setPurpose(event.target.value)
-              }
-              placeholder="Explain the purpose of this purchase..."
-              required
-              rows={5}
-              style={{
-                width: "100%",
-                maxWidth: 600,
-                padding: 10,
-              }}
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="priority">Priority</Label>
 
-          {/* Priority */}
-          <div style={{ marginBottom: 20 }}>
-            <label
-              htmlFor="priority"
-              style={{
-                display: "block",
-                marginBottom: 5,
-              }}
-            >
-              Priority
-            </label>
+              <NativeSelect
+                id="priority"
+                value={priority}
+                onChange={(event) =>
+                  setPriority(event.target.value)
+                }
+                disabled={loading}
+                className="w-full sm:max-w-xs"
+              >
+                <option value="low">
+                  Low
+                </option>
 
-            <select
-              id="priority"
-              value={priority}
-              onChange={(event) =>
-                setPriority(event.target.value)
-              }
-              style={{
-                padding: 10,
-              }}
-            >
-              <option value="low">
-                Low
-              </option>
+                <option value="normal">
+                  Normal
+                </option>
 
-              <option value="normal">
-                Normal
-              </option>
+                <option value="high">
+                  High
+                </option>
 
-              <option value="high">
-                High
-              </option>
+                <option value="urgent">
+                  Urgent
+                </option>
+              </NativeSelect>
+            </div>
+          </CardContent>
+        </Card>
 
-              <option value="urgent">
-                Urgent
-              </option>
-            </select>
-          </div>
-        </section>
+        <AddRequestItem onAdd={handleAddItem} />
 
-        {/* =========================================
-            ADD ITEM
-        ========================================== */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Items</CardTitle>
 
-        <section style={{ marginTop: 40 }}>
-          <AddRequestItem
-            onAdd={handleAddItem}
-          />
-        </section>
+            {items.length > 0 && (
+              <CardAction>
+                <span className="text-xs text-muted-foreground">
+                  {items.length} item{items.length === 1 ? "" : "s"}
+                </span>
+              </CardAction>
+            )}
+          </CardHeader>
 
-        {/* =========================================
-            ITEMS LIST
-        ========================================== */}
+          <CardContent>
+            {items.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No items added yet. Add items using the form above.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {items.map((item, index) => {
+                  const itemTotal =
+                    Number(item.quantity) *
+                    Number(
+                      item.estimated_unit_price
+                    );
 
-        <section style={{ marginTop: 30 }}>
-          <h2>Items</h2>
-
-          {items.length === 0 ? (
-            <p>
-              No items added yet.
-            </p>
-          ) : (
-            <div>
-              {items.map((item, index) => {
-                const itemTotal =
-                  item.quantity *
-                  item.estimated_unit_price;
-
-                return (
-                  <div
-                    key={index}
-                    style={{
-                      border: "1px solid #ddd",
-                      borderRadius: 8,
-                      padding: 15,
-                      marginBottom: 10,
-                      maxWidth: 700,
-                    }}
-                  >
+                  return (
                     <div
-                      style={{
-                        display: "flex",
-                        justifyContent:
-                          "space-between",
-                        alignItems: "flex-start",
-                      }}
+                      key={index}
+                      className="space-y-2 border-b border-border pb-3 last:border-b-0 last:pb-0"
                     >
-                      <div>
-                        <strong>
-                          {item.item_name}
-                        </strong>
-
-                        {item.description && (
-                          <p>
-                            {item.description}
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm font-semibold text-foreground">
+                            {item.item_name}
                           </p>
-                        )}
 
-                        <p>
-                          Quantity:{" "}
-                          {item.quantity}
-                        </p>
-
-                        <p>
-                          Unit Price: ₱
-                          {item.estimated_unit_price.toLocaleString(
-                            "en-PH",
-                            {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            }
+                          {item.description && (
+                            <p className="text-sm text-muted-foreground">
+                              {item.description}
+                            </p>
                           )}
-                        </p>
+                        </div>
 
-                        <p>
-                          Subtotal: ₱
-                          {itemTotal.toLocaleString(
-                            "en-PH",
-                            {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            }
-                          )}
-                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() =>
+                            handleRemoveItem(index)
+                          }
+                          disabled={loading}
+                          aria-label={`Remove ${item.item_name}`}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleRemoveItem(index)
-                        }
-                        style={{
-                          color: "red",
-                          padding: "6px 10px",
-                        }}
-                      >
-                        Remove
-                      </button>
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                        <span className="text-muted-foreground">
+                          Quantity:{" "}
+                          <span className="font-medium text-foreground">
+                            {item.quantity}
+                          </span>
+                        </span>
+
+                        <span className="text-muted-foreground">
+                          Unit Price:{" "}
+                          <span className="font-medium text-foreground tabular-nums">
+                            {formatAmount(
+                              Number(
+                                item.estimated_unit_price
+                              )
+                            )}
+                          </span>
+                        </span>
+
+                        <span className="text-muted-foreground">
+                          Subtotal:{" "}
+                          <span className="font-medium text-foreground tabular-nums">
+                            {formatAmount(itemTotal)}
+                          </span>
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* =========================================
-            TOTAL
-        ========================================== */}
-
-        <section
-          style={{
-            marginTop: 30,
-            padding: 20,
-            background: "#f5f5f5",
-            maxWidth: 700,
-          }}
-        >
-          <h2>
-            Total: ₱
-            {totalAmount.toLocaleString(
-              "en-PH",
-              {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              }
+                  );
+                })}
+              </div>
             )}
-          </h2>
-        </section>
+          </CardContent>
+        </Card>
 
-        {/* =========================================
-            ERROR
-        ========================================== */}
+        <Card className="bg-muted/40">
+          <CardContent className="flex items-center justify-between py-4">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              Total
+            </h2>
 
-        {error && (
-          <div
-            style={{
-              marginTop: 20,
-              padding: 15,
-              color: "#b91c1c",
-              background: "#fee2e2",
-              borderRadius: 6,
-              maxWidth: 700,
-            }}
+            <p className="text-xl font-bold text-foreground tabular-nums">
+              {formatAmount(totalAmount)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <div className="flex flex-col-reverse gap-3 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={loading}
+            onClick={() => router.push("/employee/requests")}
           >
-            {error}
-          </div>
-        )}
+            Cancel
+          </Button>
 
-        {/* =========================================
-            SUBMIT
-        ========================================== */}
-
-        <section style={{ marginTop: 30 }}>
-          <button
+          <Button
             type="submit"
             disabled={loading}
-            style={{
-              padding: "12px 20px",
-              cursor: loading
-                ? "not-allowed"
-                : "pointer",
-            }}
+            className="sm:min-w-48"
           >
             {loading
               ? "Creating Request..."
               : "Create Purchase Request"}
-          </button>
-        </section>
+          </Button>
+        </div>
       </form>
-    </main>
+    </div>
   );
 }

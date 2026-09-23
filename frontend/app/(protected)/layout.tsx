@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
+import { PageLoader } from "@/src/components/shared/state";
 
 export default function ProtectedLayout({
   children,
@@ -33,7 +34,7 @@ export default function ProtectedLayout({
   }, [router]);
 
   if (loading) {
-    return <p>Loading...</p>;
+    return <PageLoader label="Checking your session..." />;
   }
 
   return <>{children}</>;

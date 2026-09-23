@@ -1,101 +1,31 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { createClient } from "@/src/lib/supabase/client";
+import { SidebarShell, type SidebarSection } from "@/src/components/shared/sidebar-shell";
+import {
+  ClipboardList,
+  FilePlus2,
+  LayoutDashboard,
+  User,
+} from "lucide-react";
 
-const navigation = [
+const sections: SidebarSection[] = [
   {
-    name: "Dashboard",
-    href: "/employee/dashboard",
+    items: [
+      { name: "Dashboard", href: "/employee/dashboard", icon: LayoutDashboard },
+      { name: "My Requests", href: "/employee/requests", exact: true, icon: ClipboardList },
+      { name: "Create Request", href: "/employee/requests/create", exact: true, icon: FilePlus2 },
+    ],
   },
   {
-    name: "My Requests",
-    href: "/employee/requests",
-    exact: true,
-  },
-  {
-    name: "Create Request",
-    href: "/employee/requests/create",
-    exact: true,
-  },
-  {
-    name: "Profile",
-    href: "/employee/profile",
+    label: "Account",
+    items: [{ name: "Profile", href: "/employee/profile", icon: User }],
   },
 ];
 
-export default function Sidebar() {
-  const pathname = usePathname();
-  const router = useRouter();
-
-  async function handleLogout() {
-    const supabase = createClient();
-
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      console.error("Logout error:", error);
-      return;
-    }
-
-    router.push("/auth/login");
-    router.refresh();
-  }
-
+export default function Sidebar({ children }: { children: React.ReactNode }) {
   return (
-    <aside
-      style={{
-        width: 240,
-        minHeight: "100vh",
-        borderRight: "1px solid #ddd",
-        padding: 20,
-      }}
-    >
-      <h2>Purchase System</h2>
-
-      <nav
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-          marginTop: 30,
-        }}
-      >
-        {navigation.map((item) => {
-          const active = item.exact
-            ? pathname === item.href
-            : pathname === item.href ||
-              pathname.startsWith(`${item.href}/`);
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              style={{
-                padding: "10px 12px",
-                textDecoration: "none",
-                borderRadius: 6,
-                background: active ? "#e8f5e9" : "transparent",
-                color: "#222",
-              }}
-            >
-              {item.name}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <button
-        onClick={handleLogout}
-        style={{
-          marginTop: 40,
-          width: "100%",
-          padding: 10,
-        }}
-      >
-        Logout
-      </button>
-    </aside>
+    <SidebarShell sections={sections} roleLabel="Employee">
+      {children}
+    </SidebarShell>
   );
 }

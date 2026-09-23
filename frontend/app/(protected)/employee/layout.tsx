@@ -5,23 +5,5 @@ export default function EmployeeLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        minHeight: "100vh",
-      }}
-    >
-      <EmployeeSidebar />
-
-      <main
-        style={{
-          flex: 1,
-          padding: 30,
-        }}
-      >
-        {children}
-      </main>
-    </div>
-  );
+  return <EmployeeSidebar>{children}</EmployeeSidebar>;
 }

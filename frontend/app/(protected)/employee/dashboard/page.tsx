@@ -3,6 +3,21 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/src/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  FilePlus2,
+  Inbox,
+  TrendingUp,
+  FileClock,
+  BadgeCheck,
+  CircleX,
+} from "lucide-react";
+import { PageHeader } from "@/src/components/shared/page-header";
+import { StatCard } from "@/src/components/shared/stat-card";
+import { StatusBadge } from "@/src/components/shared/badges";
+import { EmptyState, ErrorState, ListSkeleton } from "@/src/components/shared/state";
+import { formatAmount, formatDate } from "@/src/lib/format";
 
 type Profile = {
   full_name: string;
@@ -144,6 +159,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDashboard();
   }, [loadDashboard]);
 
@@ -173,9 +189,9 @@ export default function DashboardPage() {
   // ==========================================
   if (loading) {
     return (
-      <main style={{ padding: "24px" }}>
-        <p>Loading dashboard...</p>
-      </main>
+      <div className="mx-auto w-full max-w-6xl space-y-8">
+        <ListSkeleton />
+      </div>
     );
   }
 
@@ -184,22 +200,13 @@ export default function DashboardPage() {
   // ==========================================
   if (error) {
     return (
-      <main style={{ padding: "24px" }}>
-        <h1>Dashboard</h1>
+      <div className="mx-auto w-full max-w-6xl">
+        <PageHeader title="Dashboard" />
 
-        <div
-          style={{
-            marginTop: "20px",
-            padding: "15px",
-            color: "#b91c1c",
-            backgroundColor: "#fef2f2",
-            border: "1px solid #fecaca",
-            borderRadius: "8px",
-          }}
-        >
-          {error}
+        <div className="mt-6">
+          <ErrorState message={error} onRetry={loadDashboard} />
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -235,297 +242,133 @@ export default function DashboardPage() {
   // PAGE
   // ==========================================
   return (
-    <main
-      style={{
-        padding: "24px",
-        maxWidth: "1100px",
-        margin: "0 auto",
-      }}
-    >
+    <div className="mx-auto w-full max-w-6xl space-y-8">
       {/* ========================================
           WELCOME
       ======================================== */}
-      <section>
-        <h1>
-          Welcome,{" "}
-          {profile?.full_name ||
-            "Employee"}
-        </h1>
-
-        {profile?.employee_id && (
-          <p>
-            Employee ID:{" "}
-            {profile.employee_id}
-          </p>
-        )}
-
-        <p>
-          Here's an overview of your
-          purchase requests.
-        </p>
-      </section>
+      <PageHeader
+        title={`Welcome back, ${profile?.full_name || "Employee"}`}
+        description={`Here's an overview of your purchase requests.${profile?.employee_id ? ` Employee ID: ${profile.employee_id}` : ""}`}
+      >
+        <Button
+          render={
+            <Link href="/employee/requests/create" />
+          }
+        >
+          <FilePlus2 />
+          New Request
+        </Button>
+      </PageHeader>
 
       {/* ========================================
           STATISTICS
       ======================================== */}
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: "16px",
-          marginTop: "30px",
-        }}
-      >
-        {/* Total */}
-        <div
-          style={{
-            padding: "20px",
-            border:
-              "1px solid #ddd",
-            borderRadius: "10px",
-          }}
-        >
-          <p>Total Requests</p>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Total Requests"
+          value={totalRequests}
+          icon={TrendingUp}
+          tone="primary"
+        />
 
-          <h2>
-            {totalRequests}
-          </h2>
-        </div>
+        <StatCard
+          label="Pending"
+          value={pendingRequests}
+          icon={FileClock}
+          tone="pending"
+        />
 
-        {/* Pending */}
-        <div
-          style={{
-            padding: "20px",
-            border:
-              "1px solid #ddd",
-            borderRadius: "10px",
-          }}
-        >
-          <p>Pending</p>
+        <StatCard
+          label="Approved"
+          value={approvedRequests}
+          icon={BadgeCheck}
+          tone="approved"
+        />
 
-          <h2>
-            {pendingRequests}
-          </h2>
-        </div>
-
-        {/* Approved */}
-        <div
-          style={{
-            padding: "20px",
-            border:
-              "1px solid #ddd",
-            borderRadius: "10px",
-          }}
-        >
-          <p>Approved</p>
-
-          <h2>
-            {approvedRequests}
-          </h2>
-        </div>
-
-        {/* Rejected */}
-        <div
-          style={{
-            padding: "20px",
-            border:
-              "1px solid #ddd",
-            borderRadius: "10px",
-          }}
-        >
-          <p>Rejected</p>
-
-          <h2>
-            {rejectedRequests}
-          </h2>
-        </div>
-      </section>
+        <StatCard
+          label="Rejected"
+          value={rejectedRequests}
+          icon={CircleX}
+          tone="rejected"
+        />
+      </div>
 
       {/* ========================================
           RECENT REQUESTS
       ======================================== */}
-      <section
-        style={{
-          marginTop: "40px",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent:
-              "space-between",
-            alignItems: "center",
-          }}
-        >
-          <h2>
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-foreground">
             Recent Requests
           </h2>
 
-          <Link href="/employee/requests">
-            View All
-          </Link>
+          {requests.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              render={<Link href="/employee/requests" />}
+            >
+              View All
+            </Button>
+          )}
         </div>
 
-        {/* ======================================
-            NO REQUESTS
-        ====================================== */}
-        {recentRequests.length ===
-        0 ? (
-          <div
-            style={{
-              marginTop: "15px",
-              padding: "20px",
-              border:
-                "1px solid #ddd",
-              borderRadius: "10px",
-            }}
-          >
-            <p>
-              No purchase requests
-              yet.
-            </p>
-
-            <Link href="/employee/requests/create">
-              Create your first
-              request
-            </Link>
-          </div>
+        {recentRequests.length === 0 ? (
+          <EmptyState
+            icon={Inbox}
+            title="No purchase requests yet"
+            description="Create your first request when you need to purchase items or services."
+            action={
+              <Button
+                render={
+                  <Link href="/employee/requests/create" />
+                }
+              >
+                <FilePlus2 />
+                Create your first request
+              </Button>
+            }
+          />
         ) : (
-          /* ====================================
-             REQUEST LIST
-          ==================================== */
-          <div
-            style={{
-              marginTop: "15px",
-            }}
-          >
+          <div className="space-y-3">
             {recentRequests.map(
               (request) => (
                 <Link
-                      key={request.id}
-                      href={`/employee/requests/${request.id}`}
-                  style={{
-                    display: "block",
-                    textDecoration:
-                      "none",
-                    color: "inherit",
-                    marginBottom:
-                      "12px",
-                  }}
+                  key={request.id}
+                  href={`/employee/requests/${request.id}`}
+                  className="block transition-colors"
                 >
-                  <div
-                    style={{
-                      padding: "18px",
-                      border:
-                        "1px solid #ddd",
-                      borderRadius:
-                        "10px",
-                    }}
-                  >
-                    {/* Request header */}
-                    <div
-                      style={{
-                        display:
-                          "flex",
-                        justifyContent:
-                          "space-between",
-                        alignItems:
-                          "flex-start",
-                        gap: "20px",
-                      }}
-                    >
-                      <div>
-                        <h3>
-                          {
-                            request.title
-                          }
-                        </h3>
+                  <Card className="transition-colors hover:bg-muted/40">
+                    <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-sm font-semibold text-foreground">
+                          {request.title}
+                        </p>
 
-                        <p
-                          style={{
-                            color:
-                              "#666",
-                          }}
-                        >
-                          {
-                            request.request_number
-                          }
+                        <p className="text-xs text-muted-foreground">
+                          {request.request_number}
+                        </p>
+
+                        <p className="text-xs text-muted-foreground">
+                          Submitted: {formatDate(request.submitted_at)}
                         </p>
                       </div>
 
-                      <strong>
-                        {
-                          request.status
-                        }
-                      </strong>
-                    </div>
+                      <div className="flex shrink-0 items-center justify-between gap-4 sm:flex-col sm:items-end sm:justify-center sm:gap-1.5">
+                        <StatusBadge status={request.status} />
 
-                    {/* Request information */}
-                    <div
-                      style={{
-                        display:
-                          "flex",
-                        justifyContent:
-                          "space-between",
-                        alignItems:
-                          "center",
-                        marginTop:
-                          "10px",
-                        gap: "20px",
-                      }}
-                    >
-                      <span>
-                        Submitted:{" "}
-                        {new Date(
-                          request.submitted_at
-                        ).toLocaleDateString()}
-                      </span>
-
-                      <strong>
-                        ₱
-                        {Number(
-                          request.total_amount
-                        ).toLocaleString(
-                          "en-PH",
-                          {
-                            minimumFractionDigits: 2,
-                          }
-                        )}
-                      </strong>
-                    </div>
-                  </div>
+                        <p className="text-sm font-semibold text-foreground tabular-nums">
+                          {formatAmount(request.total_amount)}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </Link>
               )
             )}
           </div>
         )}
       </section>
-
-      {/* ========================================
-          CREATE REQUEST
-      ======================================== */}
-      <section
-        style={{
-          marginTop: "30px",
-        }}
-      >
-        <Link
-          href="/employee/requests/create"
-          style={{
-            display: "inline-block",
-            padding: "12px 18px",
-            backgroundColor:
-              "#2563eb",
-            color: "#fff",
-            textDecoration:
-              "none",
-            borderRadius: "6px",
-          }}
-        >
-          Create Purchase Request
-        </Link>
-      </section>
-    </main>
+    </div>
   );
 }

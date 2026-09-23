@@ -4,6 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Inbox, ArrowLeft, CheckCircle2, XCircle } from "lucide-react";
+import { PageHeader } from "@/src/components/shared/page-header";
+import { PriorityBadge, StatusBadge } from "@/src/components/shared/badges";
+import { CardSkeleton, EmptyState, ErrorState } from "@/src/components/shared/state";
+import { formatAmount, formatDateTime } from "@/src/lib/format";
 
 type RequestData = {
   id: string;
@@ -35,6 +44,21 @@ type RequesterProfile = {
 type Department = {
   name: string;
 };
+
+function DetailRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[140px_1fr] items-start gap-4 sm:grid-cols-[160px_1fr]">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="text-sm font-medium text-foreground">{children}</dd>
+    </div>
+  );
+}
 
 export default function ApproverRequestDetailsPage() {
   const router = useRouter();
@@ -265,6 +289,7 @@ export default function ApproverRequestDetailsPage() {
   }, [requestId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadRequest();
   }, [loadRequest]);
 
@@ -416,23 +441,17 @@ export default function ApproverRequestDetailsPage() {
     }
   }
 
-  // ==========================================
-  // REJECT
-  // ==========================================
   async function handleReject() {
     if (actionLoading) {
       return;
     }
 
     if (!request) {
-      setActionError(
-        "Request data is not available."
-      );
+      setActionError("Request data is not available.");
       return;
     }
 
-    const reason =
-      rejectionReason.trim();
+    const reason = rejectionReason.trim();
 
     if (!reason) {
       setActionError(
@@ -447,18 +466,13 @@ export default function ApproverRequestDetailsPage() {
     setActionError("");
 
     try {
-      // --------------------------------
-      // Authentication
-      // --------------------------------
       const {
         data: { user },
         error: authError,
       } = await supabase.auth.getUser();
 
       if (authError) {
-        throw new Error(
-          authError.message
-        );
+        throw new Error(authError.message);
       }
 
       if (!user) {
@@ -466,42 +480,79 @@ export default function ApproverRequestDetailsPage() {
           "You are not authenticated."
         );
       }
-      console.log("AUTH USER ID:", user.id);
-        const {
+
+      console.log(
+        "AUTH USER ID:",
+        user.id
+      );
+
+      const {
         data: isApprover,
         error: approverError,
-        } = await supabase.rpc("is_approver");
+      } = await supabase.rpc("is_approver");
 
-        console.log("========== RLS DEBUG ==========");
-        console.log("AUTH USER ID:", user.id);
-        console.log("IS APPROVER:", isApprover);
-        console.log("APPROVER ERROR:", approverError);
-        console.log("================================");
-      // --------------------------------
-      // Make sure request is still pending
-      // --------------------------------
+      console.log(
+        "========== RLS DEBUG =========="
+      );
+      console.log(
+        "AUTH USER ID:",
+        user.id
+      );
+      console.log(
+        "IS APPROVER:",
+        isApprover
+      );
+      console.log(
+        "APPROVER ERROR:",
+        approverError
+      );
+      console.log(
+        "REQUEST STATUS:",
+        request.status
+      );
+      console.log(
+        "REQUEST ID:",
+        request.id
+      );
+      console.log(
+        "================================"
+      );
+
+      if (approverError) {
+        throw new Error(
+          `Unable to verify approver role: ${approverError.message}`
+        );
+      }
+
+      if (!isApprover) {
+        throw new Error(
+          "You are not authorized to reject purchase requests."
+        );
+      }
+
       if (request.status !== "pending") {
         throw new Error(
           `This request is already ${request.status}.`
         );
       }
 
-      // --------------------------------
-      // Reject request
-      // --------------------------------
       const {
+        data: updatedRequest,
         error: updateError,
       } = await supabase
         .from("purchase_requests")
         .update({
           status: "rejected",
           rejection_reason: reason,
-          reviewed_at:
-            new Date().toISOString(),
+          reviewed_at: new Date().toISOString(),
           reviewed_by: user.id,
         })
         .eq("id", request.id)
-        .eq("status", "pending");
+        .eq("status", "pending")
+        .select()
+        .single();
+
+        console.log("MINIMAL UPDATE ERROR:", updateError);
 
       if (updateError) {
         console.error(
@@ -514,9 +565,12 @@ export default function ApproverRequestDetailsPage() {
         );
       }
 
-      // --------------------------------
-      // Create rejection log
-      // --------------------------------
+      if (!updatedRequest) {
+        throw new Error(
+          "The purchase request could not be rejected."
+        );
+      }
+
       const {
         error: logError,
       } = await supabase
@@ -539,12 +593,10 @@ export default function ApproverRequestDetailsPage() {
         );
       }
 
-      // --------------------------------
-      // Go back to dashboard
-      // --------------------------------
-      router.push(
+      router.replace(
         "/approver/dashboard"
       );
+
       router.refresh();
     } catch (err) {
       console.error(
@@ -557,25 +609,28 @@ export default function ApproverRequestDetailsPage() {
           ? err.message
           : "Failed to reject request."
       );
-
+    } finally {
       setActionLoading(false);
     }
   }
-
   // ==========================================
   // LOADING
   // ==========================================
   if (loading) {
     return (
-      <main style={{ padding: "24px" }}>
-        <Link href="/approver/dashboard">
-          ← Back to Approver Dashboard
-        </Link>
+      <div className="mx-auto w-full max-w-5xl space-y-6">
+        <Button
+          variant="ghost"
+          size="sm"
+          render={<Link href="/approver/dashboard" />}
+        >
+          <ArrowLeft />
+          Back to Approver Dashboard
+        </Button>
 
-        <p style={{ marginTop: "25px" }}>
-          Loading request...
-        </p>
-      </main>
+        <PageHeader title="Request Details" />
+        <CardSkeleton />
+      </div>
     );
   }
 
@@ -584,32 +639,20 @@ export default function ApproverRequestDetailsPage() {
   // ==========================================
   if (error) {
     return (
-      <main style={{ padding: "24px" }}>
-        <Link href="/approver/dashboard">
-          ← Back to Approver Dashboard
-        </Link>
-
-        <h1
-          style={{
-            marginTop: "25px",
-          }}
+      <div className="mx-auto w-full max-w-5xl space-y-6">
+        <Button
+          variant="ghost"
+          size="sm"
+          render={<Link href="/approver/dashboard" />}
         >
-          Request Details
-        </h1>
+          <ArrowLeft />
+          Back to Approver Dashboard
+        </Button>
 
-        <div
-          style={{
-            marginTop: "20px",
-            padding: "20px",
-            color: "#b91c1c",
-            backgroundColor: "#fef2f2",
-            border: "1px solid #fecaca",
-            borderRadius: "10px",
-          }}
-        >
-          {error}
-        </div>
-      </main>
+        <PageHeader title="Request Details" />
+
+        <ErrorState message={error} onRetry={loadRequest} />
+      </div>
     );
   }
 
@@ -618,19 +661,22 @@ export default function ApproverRequestDetailsPage() {
   // ==========================================
   if (!request) {
     return (
-      <main style={{ padding: "24px" }}>
-        <Link href="/approver/dashboard">
-          ← Back to Approver Dashboard
-        </Link>
-
-        <h1
-          style={{
-            marginTop: "25px",
-          }}
-        >
-          Request Not Found
-        </h1>
-      </main>
+      <div className="mx-auto w-full max-w-5xl">
+        <EmptyState
+          icon={Inbox}
+          title="Request Not Found"
+          description="This purchase request could not be found."
+          action={
+            <Button
+              variant="outline"
+              render={<Link href="/approver/dashboard" />}
+            >
+              <ArrowLeft />
+              Back to Approver Dashboard
+            </Button>
+          }
+        />
+      </div>
     );
   }
 
@@ -638,340 +684,207 @@ export default function ApproverRequestDetailsPage() {
   // PAGE
   // ==========================================
   return (
-    <main
-      style={{
-        padding: "24px",
-        maxWidth: "1000px",
-        margin: "0 auto",
-      }}
-    >
+    <div className="mx-auto w-full max-w-5xl space-y-6">
       {/* Back */}
-      <Link href="/approver/dashboard">
-        ← Back to Approver Dashboard
-      </Link>
-
-      {/* Header */}
-      <div style={{ marginTop: "25px" }}>
-        <h1>Request Details</h1>
-
-        <p
-          style={{
-            marginTop: "6px",
-            color: "#666",
-          }}
+      <div className="space-y-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          render={<Link href="/approver/dashboard" />}
         >
-          {request.request_number}
-        </p>
+          <ArrowLeft />
+          Back to Approver Dashboard
+        </Button>
+
+        {/* Header */}
+        <PageHeader
+          title="Request Details"
+          description={request.request_number}
+        >
+          <div className="flex items-center gap-2">
+            <PriorityBadge priority={request.priority} />
+            <StatusBadge status={request.status} />
+          </div>
+        </PageHeader>
       </div>
 
-      {/* Request Information */}
-      <section
-        style={{
-          marginTop: "25px",
-          padding: "24px",
-          border: "1px solid #ddd",
-          borderRadius: "10px",
-        }}
-      >
-        <h2>Request Information</h2>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="space-y-6">
+          {/* Request Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Request Information</CardTitle>
+            </CardHeader>
 
-        <div style={{ marginTop: "20px" }}>
-          <p>
-            <strong>Request Number:</strong>{" "}
-            {request.request_number}
-          </p>
+            <CardContent className="space-y-3 border-t border-border pt-4">
+              <dl className="space-y-3">
+                <DetailRow label="Request Number">
+                  {request.request_number}
+                </DetailRow>
 
-          <p>
-            <strong>Title:</strong>{" "}
-            {request.title}
-          </p>
+                <DetailRow label="Title">{request.title}</DetailRow>
 
-          <p>
-            <strong>Purpose:</strong>{" "}
-            {request.purpose}
-          </p>
+                <DetailRow label="Purpose">{request.purpose}</DetailRow>
 
-          <p>
-            <strong>Priority:</strong>{" "}
-            {request.priority}
-          </p>
+                <DetailRow label="Submitted">
+                  {formatDateTime(request.submitted_at)}
+                </DetailRow>
+              </dl>
+            </CardContent>
+          </Card>
 
-          <p>
-            <strong>Status:</strong>{" "}
-            {request.status}
-          </p>
+          {/* Requester */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Requester</CardTitle>
+            </CardHeader>
 
-          <p>
-            <strong>Submitted:</strong>{" "}
-            {new Date(
-              request.submitted_at
-            ).toLocaleString()}
-          </p>
+            <CardContent className="space-y-3 border-t border-border pt-4">
+              <dl className="space-y-3">
+                <DetailRow label="Name">
+                  {requester?.full_name || "Unknown"}
+                </DetailRow>
+
+                <DetailRow label="Employee ID">
+                  {requester?.employee_id || "Not assigned"}
+                </DetailRow>
+
+                <DetailRow label="Department">
+                  {department?.name || "Not assigned"}
+                </DetailRow>
+              </dl>
+            </CardContent>
+          </Card>
+
+          {/* Items */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Requested Items</CardTitle>
+            </CardHeader>
+
+            <CardContent className="space-y-3 border-t border-border pt-4">
+              {items.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No items found.</p>
+              ) : (
+                <div className="space-y-3">
+                  {items.map((item) => (
+                    <div
+                      key={item.id}
+                      className="space-y-2 rounded-lg border border-border p-4"
+                    >
+                      <p className="text-sm font-semibold text-foreground">
+                        {item.item_name}
+                      </p>
+
+                      {item.description && (
+                        <p className="text-sm text-muted-foreground">
+                          {item.description}
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-border pt-2">
+                        <span className="text-sm text-muted-foreground">
+                          Qty: {item.quantity} ×{" "}
+                          {formatAmount(item.estimated_unit_price)}
+                        </span>
+
+                        <span className="text-sm font-semibold text-foreground tabular-nums">
+                          {formatAmount(item.estimated_total)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
-      </section>
 
-      {/* Requester */}
-      <section
-        style={{
-          marginTop: "20px",
-          padding: "24px",
-          border: "1px solid #ddd",
-          borderRadius: "10px",
-        }}
-      >
-        <h2>Requester</h2>
+        {/* Total and Actions */}
+        <div className="space-y-6">
+          <Card className="bg-muted/40">
+            <CardContent className="space-y-4 py-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Total Amount</span>
 
-        <div style={{ marginTop: "20px" }}>
-          <p>
-            <strong>Name:</strong>{" "}
-            {requester?.full_name ||
-              "Unknown"}
-          </p>
-
-          <p>
-            <strong>Employee ID:</strong>{" "}
-            {requester?.employee_id ||
-              "Not assigned"}
-          </p>
-
-          <p>
-            <strong>Department:</strong>{" "}
-            {department?.name ||
-              "Not assigned"}
-          </p>
-        </div>
-      </section>
-
-      {/* Items */}
-      <section
-        style={{
-          marginTop: "20px",
-          padding: "24px",
-          border: "1px solid #ddd",
-          borderRadius: "10px",
-        }}
-      >
-        <h2>Requested Items</h2>
-
-        <div style={{ marginTop: "20px" }}>
-          {items.length === 0 ? (
-            <p>No items found.</p>
-          ) : (
-            items.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  padding: "16px",
-                  marginBottom: "12px",
-                  border: "1px solid #eee",
-                  borderRadius: "8px",
-                }}
-              >
-                <h3>
-                  {item.item_name}
-                </h3>
-
-                {item.description && (
-                  <p>
-                    {item.description}
-                  </p>
-                )}
-
-                <p>
-                  <strong>
-                    Quantity:
-                  </strong>{" "}
-                  {item.quantity}
-                </p>
-
-                <p>
-                  <strong>
-                    Unit Price:
-                  </strong>{" "}
-                  ₱
-                  {Number(
-                    item.estimated_unit_price
-                  ).toLocaleString(
-                    "en-PH",
-                    {
-                      minimumFractionDigits: 2,
-                    }
-                  )}
-                </p>
-
-                <p>
-                  <strong>
-                    Item Total:
-                  </strong>{" "}
-                  ₱
-                  {Number(
-                    item.estimated_total
-                  ).toLocaleString(
-                    "en-PH",
-                    {
-                      minimumFractionDigits: 2,
-                    }
-                  )}
-                </p>
+                <span className="text-lg font-bold text-foreground tabular-nums">
+                  {formatAmount(request.total_amount)}
+                </span>
               </div>
-            ))
+            </CardContent>
+          </Card>
+
+          {/* Review actions only when pending */}
+          {request.status === "pending" ? (
+            <Card className="self-start">
+              <CardHeader>
+                <CardTitle>Review Request</CardTitle>
+              </CardHeader>
+
+              <CardContent className="space-y-4 border-t border-border pt-4">
+                {actionError && <ErrorState message={actionError} />}
+
+                <div className="space-y-2">
+                  <Label htmlFor="rejectionReason">
+                    Rejection Reason
+                  </Label>
+
+                  <Textarea
+                    id="rejectionReason"
+                    value={rejectionReason}
+                    onChange={(event) =>
+                      setRejectionReason(
+                        event.target.value
+                      )
+                    }
+                    placeholder="Enter reason if rejecting this request..."
+                    rows={4}
+                    disabled={actionLoading}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Button
+                    type="button"
+                    onClick={handleApprove}
+                    disabled={actionLoading}
+                    className="bg-emerald-600 text-white hover:bg-emerald-500"
+                  >
+                    <CheckCircle2 />
+                    {actionLoading
+                      ? "Processing..."
+                      : "Approve Request"}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleReject}
+                    disabled={actionLoading}
+                    className="text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+                  >
+                    <XCircle />
+                    {actionLoading
+                      ? "Processing..."
+                      : "Reject Request"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="self-start bg-muted/40">
+              <CardContent className="flex items-start gap-3 py-4">
+                <StatusBadge status={request.status} />
+
+                <p className="text-sm text-muted-foreground">
+                  This request has already been{" "}
+                  {request.status}.
+                </p>
+              </CardContent>
+            </Card>
           )}
         </div>
-      </section>
-
-      {/* Total and Actions */}
-      <section
-        style={{
-          marginTop: "20px",
-          padding: "24px",
-          border: "1px solid #ddd",
-          borderRadius: "10px",
-        }}
-      >
-        <h2>
-          Total Amount: ₱
-          {Number(
-            request.total_amount
-          ).toLocaleString("en-PH", {
-            minimumFractionDigits: 2,
-          })}
-        </h2>
-
-        {/* Review actions only when pending */}
-        {request.status === "pending" && (
-          <section
-            style={{
-              marginTop: "25px",
-              padding: "24px",
-              border: "1px solid #ddd",
-              borderRadius: "10px",
-            }}
-          >
-            <h2>Review Request</h2>
-
-            {actionError && (
-              <div
-                style={{
-                  marginTop: "15px",
-                  padding: "12px",
-                  color: "#b91c1c",
-                  backgroundColor:
-                    "#fef2f2",
-                  border:
-                    "1px solid #fecaca",
-                  borderRadius: "6px",
-                }}
-              >
-                {actionError}
-              </div>
-            )}
-
-            <div
-              style={{
-                marginTop: "20px",
-              }}
-            >
-              <label htmlFor="rejectionReason">
-                Rejection Reason
-              </label>
-
-              <textarea
-                id="rejectionReason"
-                value={rejectionReason}
-                onChange={(event) =>
-                  setRejectionReason(
-                    event.target.value
-                  )
-                }
-                placeholder="Enter reason if rejecting this request..."
-                rows={4}
-                disabled={actionLoading}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  marginTop: "8px",
-                  padding: "10px",
-                  border:
-                    "1px solid #ccc",
-                  borderRadius: "6px",
-                  resize: "vertical",
-                }}
-              />
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: "12px",
-                marginTop: "20px",
-              }}
-            >
-              <button
-                type="button"
-                onClick={handleApprove}
-                disabled={actionLoading}
-                style={{
-                  padding:
-                    "10px 16px",
-                  border:
-                    "1px solid #16a34a",
-                  borderRadius: "6px",
-                  backgroundColor:
-                    "#16a34a",
-                  color: "#fff",
-                  cursor: actionLoading
-                    ? "not-allowed"
-                    : "pointer",
-                }}
-              >
-                {actionLoading
-                  ? "Processing..."
-                  : "Approve Request"}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleReject}
-                disabled={actionLoading}
-                style={{
-                  padding:
-                    "10px 16px",
-                  border:
-                    "1px solid #dc2626",
-                  borderRadius: "6px",
-                  backgroundColor:
-                    "#dc2626",
-                  color: "#fff",
-                  cursor: actionLoading
-                    ? "not-allowed"
-                    : "pointer",
-                }}
-              >
-                {actionLoading
-                  ? "Processing..."
-                  : "Reject Request"}
-              </button>
-            </div>
-          </section>
-        )}
-
-        {/* Already reviewed */}
-        {request.status !== "pending" && (
-          <div
-            style={{
-              marginTop: "20px",
-              padding: "15px",
-              backgroundColor: "#f5f5f5",
-              borderRadius: "8px",
-            }}
-          >
-            <strong>
-              This request has already been{" "}
-              {request.status}.
-            </strong>
-          </div>
-        )}
-      </section>
-    </main>
+      </div>
+    </div>
   );
 }

@@ -1,98 +1,42 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { createClient } from "@/src/lib/supabase/client";
+import { SidebarShell, type SidebarSection } from "@/src/components/shared/sidebar-shell";
+import {
+  Building2,
+  ClipboardCheck,
+  History,
+  LayoutDashboard,
+  Tags,
+  User,
+  Users,
+} from "lucide-react";
 
-const navigation = [
+const sections: SidebarSection[] = [
   {
-    name: "Dashboard",
-    href: "/approver/dashboard",
-    exact: true,
+    items: [
+      { name: "Dashboard", href: "/approver/dashboard", exact: true, icon: LayoutDashboard },
+      { name: "Purchase Requests", href: "/approver/requests", exact: true, icon: ClipboardCheck },
+    ],
   },
   {
-    name: "Requests",
-    href: "/approver/requests",
-    exact: true,
+    label: "Administration",
+    items: [
+      { name: "Users", href: "/approver/users", exact: true, icon: Users },
+      { name: "Departments", href: "/approver/departments", exact: true, icon: Building2 },
+      { name: "Categories", href: "/approver/categories", exact: true, icon: Tags },
+      { name: "History Logs", href: "/approver/logs", exact: true, icon: History },
+    ],
   },
   {
-    name: "Profile",
-    href: "/approver/profile",
-    exact: true,
+    label: "Account",
+    items: [{ name: "Profile", href: "/approver/profile", exact: true, icon: User }],
   },
 ];
 
-export default function ApproverSidebar() {
-  const pathname = usePathname();
-  const router = useRouter();
-
-  async function handleLogout() {
-    const supabase = createClient();
-
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      console.error("Logout error:", error);
-      return;
-    }
-
-    router.push("/auth/login");
-    router.refresh();
-  }
-
+export default function ApproverSidebar({ children }: { children: React.ReactNode }) {
   return (
-    <aside
-      style={{
-        width: 240,
-        minHeight: "100vh",
-        borderRight: "1px solid #ddd",
-        padding: 20,
-      }}
-    >
-      <h2>Purchase System</h2>
-
-      <nav
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-          marginTop: 30,
-        }}
-      >
-        {navigation.map((item) => {
-          const active = item.exact
-            ? pathname === item.href
-            : pathname === item.href ||
-              pathname.startsWith(`${item.href}/`);
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              style={{
-                padding: "10px 12px",
-                textDecoration: "none",
-                borderRadius: 6,
-                background: active ? "#e8f5e9" : "transparent",
-                color: "#222",
-              }}
-            >
-              {item.name}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <button
-        onClick={handleLogout}
-        style={{
-          marginTop: 40,
-          width: "100%",
-          padding: 10,
-        }}
-      >
-        Logout
-      </button>
-    </aside>
+    <SidebarShell sections={sections} roleLabel="Approver">
+      {children}
+    </SidebarShell>
   );
 }

@@ -3,6 +3,22 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/src/lib/supabase/client";
+import { cn } from "cn";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  BadgeCheck,
+  CircleX,
+  FileClock,
+  FileText,
+  Inbox,
+  RefreshCw,
+} from "lucide-react";
+import { PageHeader } from "@/src/components/shared/page-header";
+import { StatCard } from "@/src/components/shared/stat-card";
+import { PriorityBadge, StatusBadge } from "@/src/components/shared/badges";
+import { EmptyState, ErrorState, ListSkeleton } from "@/src/components/shared/state";
+import { formatAmount, formatDateTime } from "@/src/lib/format";
 
 type PurchaseRequest = {
   id: string;
@@ -109,6 +125,7 @@ export default function ApproverDashboardPage() {
    * Initial load
    */
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadRequests();
   }, [loadRequests]);
 
@@ -159,72 +176,6 @@ export default function ApproverDashboardPage() {
     await loadRequests();
   }
 
-  function formatPriority(priority: string) {
-    if (!priority) {
-      return "Unknown";
-    }
-
-    return (
-      priority.charAt(0).toUpperCase() +
-      priority.slice(1).toLowerCase()
-    );
-  }
-
-  function formatStatus(status: string) {
-    if (!status) {
-      return "Unknown";
-    }
-
-    return (
-      status.charAt(0).toUpperCase() +
-      status.slice(1).toLowerCase()
-    );
-  }
-
-  function getStatusStyles(status: string) {
-    switch (status.toLowerCase()) {
-      case "approved":
-        return {
-          backgroundColor: "#dcfce7",
-          color: "#15803d",
-        };
-
-      case "rejected":
-        return {
-          backgroundColor: "#fee2e2",
-          color: "#b91c1c",
-        };
-
-      case "pending":
-        return {
-          backgroundColor: "#fff7ed",
-          color: "#c2410c",
-        };
-
-      default:
-        return {
-          backgroundColor: "#f3f4f6",
-          color: "#374151",
-        };
-    }
-  }
-
-  function getPriorityColor(priority: string) {
-    switch (priority.toLowerCase()) {
-      case "high":
-        return "#dc2626";
-
-      case "medium":
-        return "#d97706";
-
-      case "low":
-        return "#16a34a";
-
-      default:
-        return "#555";
-    }
-  }
-
   const pendingCount = requests.filter(
     (request) =>
       request.status.toLowerCase() === "pending"
@@ -245,10 +196,10 @@ export default function ApproverDashboardPage() {
    */
   if (loading) {
     return (
-      <main style={{ padding: "24px" }}>
-        <h1>Approver Dashboard</h1>
-        <p>Loading purchase requests...</p>
-      </main>
+      <div className="mx-auto w-full max-w-6xl space-y-8">
+        <PageHeader title="Approver Dashboard" />
+        <ListSkeleton />
+      </div>
     );
   }
 
@@ -257,45 +208,16 @@ export default function ApproverDashboardPage() {
    */
   if (error) {
     return (
-      <main style={{ padding: "24px" }}>
-        <h1>Approver Dashboard</h1>
+      <div className="mx-auto w-full max-w-6xl space-y-8">
+        <PageHeader title="Approver Dashboard" />
 
-        <div
-          style={{
-            marginTop: "20px",
-            padding: "20px",
-            border: "1px solid #fecaca",
-            backgroundColor: "#fef2f2",
-            borderRadius: "10px",
-            color: "#b91c1c",
-          }}
-        >
-          <strong>
-            Failed to load requests
-          </strong>
-
-          <p style={{ marginTop: "8px" }}>
-            {error}
-          </p>
-
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            style={{
-              marginTop: "10px",
-              padding: "10px 16px",
-              cursor: refreshing
-                ? "not-allowed"
-                : "pointer",
-            }}
-          >
-            {refreshing
-              ? "Retrying..."
-              : "Try Again"}
-          </button>
-        </div>
-      </main>
+        <ErrorState
+          message={error}
+          onRetry={handleRefresh}
+          retryLabel={refreshing ? "Retrying..." : "Try Again"}
+          retryDisabled={refreshing}
+        />
+      </div>
     );
   }
 
@@ -303,359 +225,121 @@ export default function ApproverDashboardPage() {
    * Dashboard
    */
   return (
-    <main
-      style={{
-        padding: "24px",
-        maxWidth: "1200px",
-        margin: "0 auto",
-      }}
-    >
+    <div className="mx-auto w-full max-w-6xl space-y-8">
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: "20px",
-          flexWrap: "wrap",
-        }}
+      <PageHeader
+        title="Approver Dashboard"
+        description="Review and monitor purchase requests."
       >
-        <div>
-          <h1>Approver Dashboard</h1>
-
-          <p
-            style={{
-              marginTop: "8px",
-              color: "#666",
-            }}
-          >
-            Review and monitor purchase requests.
-          </p>
-        </div>
-
-        <button
-          type="button"
+        <Button
+          variant="outline"
           onClick={handleRefresh}
           disabled={refreshing}
-          style={{
-            padding: "10px 16px",
-            border: "1px solid #ccc",
-            borderRadius: "6px",
-            backgroundColor: "#fff",
-            cursor: refreshing
-              ? "not-allowed"
-              : "pointer",
-          }}
         >
-          {refreshing
-            ? "Refreshing..."
-            : "Refresh Requests"}
-        </button>
-      </div>
+          <RefreshCw
+            className={cn(refreshing && "animate-spin")}
+          />
+          {refreshing ? "Refreshing..." : "Refresh Requests"}
+        </Button>
+      </PageHeader>
 
       {/* Statistics */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: "16px",
-          marginTop: "30px",
-        }}
-      >
-        {/* Pending */}
-        <div
-          style={{
-            padding: "20px",
-            border: "1px solid #ddd",
-            borderRadius: "10px",
-            backgroundColor: "#fff",
-          }}
-        >
-          <p
-            style={{
-              margin: 0,
-              color: "#666",
-            }}
-          >
-            Pending Requests
-          </p>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Total Requests"
+          value={requests.length}
+          icon={FileText}
+          tone="primary"
+        />
 
-          <h2
-            style={{
-              marginTop: "8px",
-              marginBottom: 0,
-            }}
-          >
-            {pendingCount}
-          </h2>
-        </div>
+        <StatCard
+          label="Pending"
+          value={pendingCount}
+          icon={FileClock}
+          tone="pending"
+        />
 
-        {/* Approved */}
-        <div
-          style={{
-            padding: "20px",
-            border: "1px solid #ddd",
-            borderRadius: "10px",
-            backgroundColor: "#fff",
-          }}
-        >
-          <p
-            style={{
-              margin: 0,
-              color: "#666",
-            }}
-          >
-            Approved Requests
-          </p>
+        <StatCard
+          label="Approved"
+          value={approvedCount}
+          icon={BadgeCheck}
+          tone="approved"
+        />
 
-          <h2
-            style={{
-              marginTop: "8px",
-              marginBottom: 0,
-              color: "#15803d",
-            }}
-          >
-            {approvedCount}
-          </h2>
-        </div>
-
-        {/* Rejected */}
-        <div
-          style={{
-            padding: "20px",
-            border: "1px solid #ddd",
-            borderRadius: "10px",
-            backgroundColor: "#fff",
-          }}
-        >
-          <p
-            style={{
-              margin: 0,
-              color: "#666",
-            }}
-          >
-            Rejected Requests
-          </p>
-
-          <h2
-            style={{
-              marginTop: "8px",
-              marginBottom: 0,
-              color: "#b91c1c",
-            }}
-          >
-            {rejectedCount}
-          </h2>
-        </div>
+        <StatCard
+          label="Rejected"
+          value={rejectedCount}
+          icon={CircleX}
+          tone="rejected"
+        />
       </div>
 
       {/* All Requests */}
-      <section style={{ marginTop: "40px" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "15px",
-          }}
-        >
-          <h2>Purchase Requests</h2>
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-foreground">
+            Purchase Requests
+          </h2>
 
-          <span
-            style={{
-              fontSize: "14px",
-              color: "#666",
-            }}
-          >
+          <span className="text-xs text-muted-foreground">
             {requests.length}{" "}
-            {requests.length === 1
-              ? "request"
-              : "requests"}
+            {requests.length === 1 ? "request" : "requests"}
           </span>
         </div>
 
         {requests.length === 0 ? (
-          <div
-            style={{
-              marginTop: "20px",
-              padding: "30px",
-              border: "1px solid #ddd",
-              borderRadius: "10px",
-              textAlign: "center",
-            }}
-          >
-            <h3>No Purchase Requests</h3>
-
-            <p
-              style={{
-                marginTop: "8px",
-                color: "#666",
-              }}
-            >
-              There are currently no purchase
-              requests.
-            </p>
-          </div>
+          <EmptyState
+            icon={Inbox}
+            title="No Purchase Requests"
+            description="There are currently no purchase requests."
+          />
         ) : (
-          <div style={{ marginTop: "20px" }}>
+          <div className="space-y-3">
             {requests.map((request) => (
               <Link
                 key={request.id}
                 href={`/approver/requests/${request.id}`}
-                style={{
-                  display: "block",
-                  textDecoration: "none",
-                  color: "inherit",
-                  marginBottom: "15px",
-                }}
+                className="block transition-colors"
               >
-                <div
-                  style={{
-                    padding: "20px",
-                    border: "1px solid #ddd",
-                    borderRadius: "10px",
-                    backgroundColor: "#fff",
-                  }}
-                >
-                  {/* Top section */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent:
-                        "space-between",
-                      alignItems: "flex-start",
-                      gap: "20px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        flex: 1,
-                      }}
-                    >
-                      <h3
-                        style={{
-                          margin: 0,
-                        }}
-                      >
-                        {request.title}
-                      </h3>
+                <Card className="transition-colors hover:bg-muted/40">
+                  <CardContent className="space-y-3 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-sm font-semibold text-foreground">
+                          {request.title}
+                        </p>
 
-                      <p
-                        style={{
-                          marginTop: "6px",
-                          fontSize: "14px",
-                          color: "#666",
-                        }}
-                      >
-                        {request.request_number}
-                      </p>
+                        <p className="text-xs text-muted-foreground">
+                          {request.request_number}
+                        </p>
 
-                      <p
-                        style={{
-                          marginTop: "10px",
-                        }}
-                      >
-                        {request.purpose}
-                      </p>
+                        <p className="line-clamp-2 text-sm text-muted-foreground">
+                          {request.purpose}
+                        </p>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        <PriorityBadge priority={request.priority} />
+                        <StatusBadge status={request.status} />
+                      </div>
                     </div>
 
-                    {/* Status */}
-                    <span
-                      style={{
-                        ...getStatusStyles(
-                          request.status
-                        ),
-                        padding:
-                          "6px 10px",
-                        borderRadius:
-                          "999px",
-                        fontSize: "13px",
-                        fontWeight: 600,
-                        whiteSpace:
-                          "nowrap",
-                      }}
-                    >
-                      {formatStatus(
-                        request.status
-                      )}
-                    </span>
-                  </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                      <span className="text-xs text-muted-foreground">
+                        Submitted {formatDateTime(request.submitted_at)}
+                      </span>
 
-                  {/* Bottom information */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent:
-                        "space-between",
-                      alignItems: "center",
-                      gap: "20px",
-                      marginTop: "20px",
-                      paddingTop: "15px",
-                      borderTop:
-                        "1px solid #eee",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div>
-                      <span
-                        style={{
-                          color: "#666",
-                        }}
-                      >
-                        Priority:
-                      </span>{" "}
-                      <strong
-                        style={{
-                          color:
-                            getPriorityColor(
-                              request.priority
-                            ),
-                        }}
-                      >
-                        {formatPriority(
-                          request.priority
-                        )}
-                      </strong>
+                      <span className="text-sm font-semibold text-foreground tabular-nums">
+                        {formatAmount(request.total_amount)}
+                      </span>
                     </div>
-
-                    <strong
-                      style={{
-                        fontSize: "18px",
-                      }}
-                    >
-                      ₱
-                      {Number(
-                        request.total_amount
-                      ).toLocaleString(
-                        "en-PH",
-                        {
-                          minimumFractionDigits: 2,
-                        }
-                      )}
-                    </strong>
-                  </div>
-
-                  {/* Submitted */}
-                  <p
-                    style={{
-                      marginTop: "12px",
-                      marginBottom: 0,
-                      fontSize: "14px",
-                      color: "#666",
-                    }}
-                  >
-                    Submitted:{" "}
-                    {new Date(
-                      request.submitted_at
-                    ).toLocaleString()}
-                  </p>
-                </div>
+                  </CardContent>
+                </Card>
               </Link>
             ))}
           </div>
         )}
       </section>
-    </main>
+    </div>
   );
 }

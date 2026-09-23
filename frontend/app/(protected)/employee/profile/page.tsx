@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/src/lib/supabase/client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/src/components/shared/page-header";
+import { CardSkeleton, ErrorState } from "@/src/components/shared/state";
+import { capitalize } from "@/src/lib/format";
 
 type Profile = {
   id: string;
@@ -15,6 +20,21 @@ type Department = {
   id: string;
   name: string;
 };
+
+function DetailRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[140px_1fr] items-start gap-4 sm:grid-cols-[160px_1fr]">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="text-sm font-medium text-foreground">{children}</dd>
+    </div>
+  );
+}
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -89,68 +109,77 @@ export default function ProfilePage() {
   }, []);
 
   if (loading) {
-    return <p>Loading profile...</p>;
+    return (
+      <div className="mx-auto w-full max-w-3xl space-y-6">
+        <PageHeader title="My Profile" />
+        <CardSkeleton />
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <div>
-        <h1>My Profile</h1>
-        <p>{error}</p>
+      <div className="mx-auto w-full max-w-3xl space-y-6">
+        <PageHeader title="My Profile" />
+        <ErrorState message={error} onRetry={() => window.location.reload()} />
       </div>
     );
   }
 
   if (!profile) {
-    return <p>Profile not found.</p>;
+    return (
+      <div className="mx-auto w-full max-w-3xl space-y-6">
+        <PageHeader title="My Profile" />
+        <ErrorState message="Profile not found." onRetry={() => window.location.reload()} />
+      </div>
+    );
   }
 
+  const initials = profile.full_name
+    .split(" ")
+    .map((part) => part.charAt(0))
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
   return (
-    <div style={{ padding: "24px" }}>
-      <h1>My Profile</h1>
+    <div className="mx-auto w-full max-w-3xl space-y-6">
+      <PageHeader title="My Profile" description="View your employee account information." />
 
-      <p>
-        View your employee account information.
-      </p>
+      <Card>
+        <CardHeader className="flex items-center gap-4">
+          <span className="flex size-12 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-700">
+            {initials}
+          </span>
 
-      <div
-        style={{
-          marginTop: "30px",
-          maxWidth: "600px",
-          padding: "24px",
-          border: "1px solid #ddd",
-          borderRadius: "10px",
-        }}
-      >
-        <div style={{ marginBottom: "20px" }}>
-          <strong>Full Name</strong>
-          <p>{profile.full_name}</p>
-        </div>
+          <div className="grid gap-1">
+            <CardTitle className="text-lg">{profile.full_name}</CardTitle>
+            <Badge variant="secondary" className="w-fit">
+              {capitalize(profile.role)}
+            </Badge>
+          </div>
+        </CardHeader>
 
-        <div style={{ marginBottom: "20px" }}>
-          <strong>Email</strong>
-          <p>{email || "No email available"}</p>
-        </div>
+        <CardContent className="border-t border-border pt-4">
+          <dl className="space-y-3">
+            <DetailRow label="Full Name">{profile.full_name}</DetailRow>
 
-        <div style={{ marginBottom: "20px" }}>
-          <strong>Employee ID</strong>
-          <p>
-            {profile.employee_id || "Not assigned"}
-          </p>
-        </div>
+            <DetailRow label="Email">
+              {email || "No email available"}
+            </DetailRow>
 
-        <div style={{ marginBottom: "20px" }}>
-          <strong>Role</strong>
-          <p>{profile.role}</p>
-        </div>
+            <DetailRow label="Employee ID">
+              {profile.employee_id || "Not assigned"}
+            </DetailRow>
 
-        <div>
-          <strong>Department</strong>
-          <p>
-            {department?.name || "Not assigned"}
-          </p>
-        </div>
-      </div>
+            <DetailRow label="Role">{capitalize(profile.role)}</DetailRow>
+
+            <DetailRow label="Department">
+              {department?.name || "Not assigned"}
+            </DetailRow>
+          </dl>
+        </CardContent>
+      </Card>
     </div>
   );
 }
