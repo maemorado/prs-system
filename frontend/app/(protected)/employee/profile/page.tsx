@@ -142,10 +142,11 @@ export default function ProfilePage() {
       setEmail(user.email ?? "");
       setMemberSince(user.created_at ?? "");
 
-      // Fetch the profile together with its department through the existing
-      // foreign key (profiles.department_id -> departments.id), so the
-      // department name is always resolved from the database relationship
-      // instead of a separate, easily-desynchronised lookup.
+      // Same profile query the Approver profile page uses: plain columns only,
+      // with the department resolved by its own lookup below. Deliberately no
+      // embedded `department:departments!(...)` join, so the Employee and
+      // Approver dropdowns resolve their options through the identical path and
+      // cannot diverge if the relationship or its policies change.
       const { data: profileData, error: profileError } =
         await supabase
           .from("profiles")
@@ -155,11 +156,7 @@ export default function ProfilePage() {
             full_name,
             employee_id,
             role,
-            department_id,
-            department:departments!profiles_department_id_fkey (
-              id,
-              name
-            )
+            department_id
           `
           )
           .eq("id", user.id)
@@ -171,15 +168,8 @@ export default function ProfilePage() {
         return;
       }
 
-      // PostgREST returns a to-one embedded relation as a single object, but
-      // supabase-js types it as an array without generated database types, so
-      // normalise either shape into a single department value.
-      const embeddedDepartment = Array.isArray(profileData.department)
-        ? profileData.department[0] ?? null
-        : profileData.department ?? null;
-
-      // The department list powers the edit dropdown and comes from the same
-      // Supabase table used by the profile relationship.
+      // The dropdown options come from the same `departments` table, in the
+      // same order, as the Approver profile dropdown.
       const { data: departmentsData, error: departmentsError } =
         await supabase
           .from("departments")
@@ -187,18 +177,6 @@ export default function ProfilePage() {
           .order("name", { ascending: true });
 
       const departmentOptions = [...(departmentsData ?? [])];
-
-      // Make sure the profile's own department is always selectable, even if
-      // the list query did not include it (for example, under a narrowed RLS
-      // policy), so the closed dropdown can display the assigned department.
-      if (
-        embeddedDepartment &&
-        !departmentOptions.some(
-          (item) => item.id === embeddedDepartment.id
-        )
-      ) {
-        departmentOptions.unshift(embeddedDepartment);
-      }
 
       if (departmentsError) {
         console.error("Departments error:", departmentsError);
@@ -210,6 +188,15 @@ export default function ProfilePage() {
         setDepartmentsError("");
       }
 
+      // Resolve the assigned department's name from that same list, so the
+      // display never needs a second query and never disagrees with the
+      // dropdown contents.
+      const currentDepartment = profileData.department_id
+        ? (departmentOptions.find(
+            (item) => item.id === profileData.department_id
+          ) ?? null)
+        : null;
+
       setDepartments(departmentOptions);
 
       setProfile({
@@ -218,7 +205,7 @@ export default function ProfilePage() {
         employee_id: profileData.employee_id ?? null,
         role: profileData.role,
         department_id: profileData.department_id ?? null,
-        department: embeddedDepartment,
+        department: currentDepartment,
       });
 
       setEditFullName(profileData.full_name);

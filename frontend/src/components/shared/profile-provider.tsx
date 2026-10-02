@@ -82,7 +82,26 @@ export function ProfileProvider({
   // otherwise produce late updates when navigating away mid-request.
   const active = useRef(true);
 
+  // Monotonic id identifying the newest load. Every `await` in `load` re-checks
+  // it, so a response belonging to a *previous* session is discarded instead of
+  // overwriting current state.
+  //
+  // Without this, a profile fetch started before sign-out can resolve *after* a
+  // different user has signed in and repaint the shell with the previous
+  // user's name, role and department until the next refresh.
+  const loadToken = useRef(0);
+
+  // Deferred follow-up loads scheduled from the auth listener, so they can be
+  // cancelled if the provider unmounts before they run.
+  const pendingLoads = useRef<ReturnType<typeof setTimeout>[]>([]);
+
   const load = useCallback(async () => {
+    const token = ++loadToken.current;
+
+    // True when this response is no longer the one we care about: the provider
+    // unmounted, or a newer load (from a new session) has already started.
+    const stale = () => !active.current || token !== loadToken.current;
+
     const supabase = createClient();
 
     const {
@@ -90,7 +109,7 @@ export function ProfileProvider({
       error: authError,
     } = await supabase.auth.getUser();
 
-    if (!active.current) {
+    if (stale()) {
       return;
     }
 
@@ -110,7 +129,7 @@ export function ProfileProvider({
       .eq("id", currentUser.id)
       .maybeSingle();
 
-    if (!active.current) {
+    if (stale()) {
       return;
     }
 
@@ -160,18 +179,58 @@ export function ProfileProvider({
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
+      // Any session change invalidates whatever load is in flight, so a request
+      // issued for the previous session can never write into the new one.
+      loadToken.current += 1;
+
       if (event === "SIGNED_OUT") {
         setUser(null);
         setProfile(null);
         setError("");
         setStatus("unauthenticated");
+
+        return;
+      }
+
+      // Only events that can change *who* is signed in reset the profile.
+      //
+      // `INITIAL_SESSION` is deliberately excluded: it fires the moment this
+      // listener subscribes, and the mount effect above already performs that
+      // initial load. Handling it here would bump the token, throw away the
+      // in-flight first load and re-fetch the same row.
+      //
+      // `TOKEN_REFRESHED` is excluded too: it rotates the access token roughly
+      // hourly without changing identity, so clearing the profile there would
+      // blank the shell and flash the loading state on a timer.
+      if (event === "SIGNED_IN" || event === "USER_UPDATED") {
+        // A different user (or a changed identity) is now active. Drop the old
+        // profile and return to `loading` so protected pages never render the
+        // previous user's data while the new one is being resolved.
+        setProfile(null);
+        setError("");
+        setStatus("loading");
+
+        // Deferred: this callback runs while Supabase holds its internal auth
+        // lock, and calling back into the client synchronously from inside it
+        // can deadlock. Yielding first lets the lock clear.
+        const timer = setTimeout(() => {
+          void load();
+        }, 0);
+
+        pendingLoads.current.push(timer);
       }
     });
 
     return () => {
       subscription.unsubscribe();
+
+      for (const timer of pendingLoads.current) {
+        clearTimeout(timer);
+      }
+
+      pendingLoads.current = [];
     };
-  }, []);
+  }, [load]);
 
   // Re-validate the session when the tab regains focus so a session that expired
   // or was revoked elsewhere is noticed, and so an edit made in another tab is

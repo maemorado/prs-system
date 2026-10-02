@@ -118,7 +118,11 @@ function UserFooter({ roleLabel }: { roleLabel: string }) {
 
     const supabase = createClient();
 
-    const { error } = await supabase.auth.signOut();
+    // `scope: "global"` revokes the refresh tokens on the server and removes
+    // the persisted session cookie, rather than only dropping the token from
+    // this tab. That is what guarantees a closed-and-reopened browser lands on
+    // the login page instead of silently restoring the previous user.
+    const { error } = await supabase.auth.signOut({ scope: "global" });
 
     if (error) {
       console.error("Logout error:", error);
