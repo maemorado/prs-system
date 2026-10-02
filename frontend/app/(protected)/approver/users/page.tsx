@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClient, createEphemeralAuthClient } from "@/src/lib/supabase/client";
+import { createClient } from "@/src/lib/supabase/client";
 import { useProfile } from "@/src/components/shared/profile-provider";
 import { friendlyError } from "@/src/lib/errors";
 import { Button } from "@/components/ui/button";
@@ -177,7 +177,6 @@ export default function ApproverUsersPage() {
   const [createdNotice, setCreatedNotice] = useState<{
     name: string;
     email: string;
-    needsConfirmation: boolean;
   } | null>(null);
 
   // ---------------------------------------------------------------------
@@ -475,104 +474,56 @@ export default function ApproverUsersPage() {
 
     setCreating(true);
 
-    // A throwaway client, so creating an account never disturbs the approver's
-    // own signed-in session.
-    const auth = createEphemeralAuthClient();
+    // The password goes to the server over this request and straight into the
+    // auth server's own create call. It is never written to `profiles`, never
+    // logged, and never kept in component state after the request resolves.
+    //
+    // Creating a sign-in and confirming its address both need a privileged key,
+    // which the browser does not have. That work happens behind this endpoint.
+    let response: Response;
 
-    const { data, error: signUpError } = await auth.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
-    });
-
-    if (signUpError) {
-      console.error("Account creation error:", signUpError);
-
+    try {
+      response = await fetch("/api/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName,
+          email,
+          password,
+          role: newRole,
+          departmentId: newDepartmentId || null,
+          employeeId: newEmployeeId.trim() || null,
+        }),
+      });
+    } catch {
       setCreateError(
-        friendlyError(
-          signUpError,
-          "Unable to create this account. Please try again."
-        )
+        "Unable to reach the server. Check your connection and try again."
       );
 
       setCreating(false);
       return;
     }
 
-    const newUserId = data.user?.id;
+    const result = await response.json().catch(() => null);
 
-    if (!newUserId) {
+    if (!response.ok || !result?.ok) {
+      console.error("Account creation error:", response.status, result?.code);
+
       setCreateError(
-        "The account could not be created. Please try again."
+        typeof result?.error === "string" && result.error.length > 0
+          ? result.error
+          : "Unable to create this account. Please try again."
       );
 
       setCreating(false);
       return;
     }
-
-    // Attach the account details to a user record. Updating first and only
-    // inserting when nothing came back means this works whether or not the
-    // account was already given a record automatically, without failing on a
-    // duplicate.
-    const supabase = createClient();
-
-    const details = {
-      full_name: fullName,
-      employee_id: newEmployeeId.trim() || null,
-      role: newRole,
-      department_id: newDepartmentId || null,
-    };
-
-    const { data: linked, error: linkError } = await supabase
-      .from("profiles")
-      .update(details)
-      .eq("id", newUserId)
-      .select(PROFILE_COLUMNS)
-      .maybeSingle();
-
-    if (linkError) {
-      console.error("Account details error:", linkError);
-
-      setCreateError(
-        friendlyError(
-          linkError,
-          "The sign-in was created but its details could not be saved. Please try again."
-        )
-      );
-
-      setCreating(false);
-      return;
-    }
-
-    if (!linked) {
-      const { error: insertError } = await supabase
-        .from("profiles")
-        .insert({ id: newUserId, ...details });
-
-      if (insertError) {
-        console.error("Account record error:", insertError);
-
-        setCreateError(
-          friendlyError(
-            insertError,
-            "The sign-in was created but its details could not be saved. Please contact an administrator."
-          )
-        );
-
-        setCreating(false);
-        return;
-      }
-    }
-
-    // `session` is only returned when the account is able to sign in straight
-    // away. Without it the person has to confirm their email address first.
-    const needsConfirmation = data.session === null;
 
     setCreating(false);
     setCreateOpen(false);
     resetCreateForm();
 
-    setCreatedNotice({ name: fullName, email, needsConfirmation });
+    setCreatedNotice({ name: fullName, email });
 
     // Refresh so the new account appears on its own, with no manual reload.
     await loadUsers();
@@ -612,22 +563,15 @@ export default function ApproverUsersPage() {
       {createdNotice && (
         <Alert>
           <Check className="size-4" />
-          <AlertTitle>Account created</AlertTitle>
+          <AlertTitle>Account created successfully.</AlertTitle>
           <AlertDescription>
             <span className="block">
-              {createdNotice.name} can now sign in with{" "}
+              {createdNotice.name} can sign in now with{" "}
               <span className="font-medium break-all text-foreground">
                 {createdNotice.email}
               </span>
-              .
+              . No email confirmation is needed.
             </span>
-
-            {createdNotice.needsConfirmation && (
-              <span className="mt-1 block">
-                They will need to confirm their email address before their
-                first sign-in.
-              </span>
-            )}
           </AlertDescription>
 
           <AlertAction>
