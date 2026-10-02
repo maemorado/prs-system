@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { useProfile } from "@/src/components/shared/profile-provider";
+import { ThemeToggle } from "@/src/components/shared/theme-toggle";
 import { friendlyError } from "@/src/lib/errors";
 import { cn } from "cn";
 import {
@@ -154,6 +155,8 @@ function UserFooter({ roleLabel }: { roleLabel: string }) {
           <p className="truncate text-xs text-muted-foreground">{roleLabel}</p>
         </div>
 
+        <ThemeToggle />
+
         <Button
           type="button"
           variant="ghost"
@@ -214,6 +217,10 @@ function MobileHeader({
       </Sheet>
 
       <Brand />
+
+      <div className="ml-auto flex items-center gap-1">
+        <ThemeToggle />
+      </div>
     </header>
   );
 }
@@ -246,7 +253,7 @@ export function SidebarShell({
       <div className="min-h-dvh">
         <MobileHeader sections={sections} roleLabel={roleLabel} />
 
-        <main className="px-4 py-6 sm:px-6 lg:pl-[272px] lg:pr-8 lg:py-8">
+        <main className="min-w-0 px-4 py-6 sm:px-6 lg:pl-[272px] lg:pr-8 lg:py-8">
           {children}
         </main>
       </div>

@@ -103,6 +103,7 @@ export default function ProfilePage() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState("");
   const [editSuccess, setEditSuccess] = useState("");
+  const [departmentsError, setDepartmentsError] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -201,6 +202,12 @@ export default function ProfilePage() {
 
       if (departmentsError) {
         console.error("Departments error:", departmentsError);
+
+        setDepartmentsError(
+          "Unable to load the department list. You can keep your current department, or try again shortly."
+        );
+      } else {
+        setDepartmentsError("");
       }
 
       setDepartments(departmentOptions);
@@ -281,7 +288,7 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-3xl space-y-6">
+      <div className="mx-auto w-full max-w-6xl space-y-6">
         <PageHeader title="My Profile" />
         <CardSkeleton />
       </div>
@@ -290,7 +297,7 @@ export default function ProfilePage() {
 
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-3xl space-y-6">
+      <div className="mx-auto w-full max-w-6xl space-y-6">
         <PageHeader title="My Profile" />
         <ErrorState
           message={error}
@@ -302,7 +309,7 @@ export default function ProfilePage() {
 
   if (!profile) {
     return (
-      <div className="mx-auto w-full max-w-3xl space-y-6">
+      <div className="mx-auto w-full max-w-6xl space-y-6">
         <PageHeader title="My Profile" />
         <ErrorState
           message="Profile not found."
@@ -370,7 +377,7 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-6">
       <PageHeader
         title="My Profile"
         description="View and update your employee account information."
@@ -417,7 +424,7 @@ export default function ProfilePage() {
 
           <Separator className="my-5" />
 
-          <dl className="space-y-3">
+          <dl className="grid gap-3 sm:grid-cols-2 sm:gap-x-8">
             <DetailRow label="Full Name">{profile.full_name}</DetailRow>
 
             <DetailRow label="Email">
@@ -489,66 +496,83 @@ export default function ProfilePage() {
 
             <Separator />
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-full-name">Full Name</Label>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-full-name">Full Name</Label>
 
-              <Input
-                id="edit-full-name"
-                value={editFullName}
-                onChange={(event) =>
-                  setEditFullName(event.target.value)
-                }
-                placeholder="Your full name"
-                autoComplete="name"
-                required
-                disabled={editSubmitting}
-              />
-            </div>
+                <Input
+                  id="edit-full-name"
+                  value={editFullName}
+                  onChange={(event) =>
+                    setEditFullName(event.target.value)
+                  }
+                  placeholder="Your full name"
+                  autoComplete="name"
+                  required
+                  disabled={editSubmitting}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-employee-id">Employee ID</Label>
+              <div className="space-y-2">
+                <Label htmlFor="edit-employee-id">Employee ID</Label>
 
-              <Input
-                id="edit-employee-id"
-                value={editEmployeeId}
-                onChange={(event) =>
-                  setEditEmployeeId(event.target.value)
-                }
-                placeholder="e.g. EMP-0001"
-                autoComplete="off"
-                disabled={editSubmitting}
-              />
-            </div>
+                <Input
+                  id="edit-employee-id"
+                  value={editEmployeeId}
+                  onChange={(event) =>
+                    setEditEmployeeId(event.target.value)
+                  }
+                  placeholder="e.g. EMP-0001"
+                  autoComplete="off"
+                  disabled={editSubmitting}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-department">Department</Label>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="edit-department">Department</Label>
 
-              <NativeSelect
-                id="edit-department"
-                value={editDepartmentId}
-                onChange={(event) =>
-                  setEditDepartmentId(event.target.value)
-                }
-                disabled={editSubmitting}
-                className="w-full"
-              >
-                <NativeSelectOption
-                  value=""
-                  className="bg-popover text-popover-foreground"
+                <NativeSelect
+                  id="edit-department"
+                  value={editDepartmentId}
+                  onChange={(event) =>
+                    setEditDepartmentId(event.target.value)
+                  }
+                  disabled={editSubmitting}
+                  className="w-full"
                 >
-                  Unassigned
-                </NativeSelectOption>
-
-                {departments.map((item) => (
                   <NativeSelectOption
-                    key={item.id}
-                    value={item.id}
+                    value=""
                     className="bg-popover text-popover-foreground"
                   >
-                    {item.name}
+                    Select department
                   </NativeSelectOption>
-                ))}
-              </NativeSelect>
+
+                  {departments.map((item) => (
+                    <NativeSelectOption
+                      key={item.id}
+                      value={item.id}
+                      className="bg-popover text-popover-foreground"
+                    >
+                      {item.name}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+
+                {departmentsError ? (
+                  <p
+                    role="alert"
+                    className="flex items-start gap-1.5 text-xs font-medium text-destructive"
+                  >
+                    <TriangleAlert className="mt-px size-3 shrink-0" />
+                    {departmentsError}
+                  </p>
+                ) : departments.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No departments are available yet. Contact an administrator
+                    to assign one.
+                  </p>
+                ) : null}
+              </div>
             </div>
 
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
