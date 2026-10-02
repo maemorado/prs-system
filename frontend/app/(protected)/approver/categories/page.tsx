@@ -298,7 +298,7 @@ export default function AdminCategoriesPage() {
                           {category.name}
                         </TableCell>
 
-                        <TableCell className="max-w-280px truncate text-muted-foreground">
+                        <TableCell className="max-w-[280px] truncate text-muted-foreground">
                           {category.description || "—"}
                         </TableCell>
 

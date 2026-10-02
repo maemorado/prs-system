@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/src/lib/supabase/client";
+import { useProfile } from "@/src/components/shared/profile-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -19,11 +20,6 @@ import { StatusBadge } from "@/src/components/shared/badges";
 import { EmptyState, ErrorState, ListSkeleton } from "@/src/components/shared/state";
 import { formatAmount, formatDate } from "@/src/lib/format";
 
-type Profile = {
-  full_name: string;
-  employee_id: string | null;
-};
-
 type PurchaseRequest = {
   id: string;
   request_number: string;
@@ -34,8 +30,11 @@ type PurchaseRequest = {
 };
 
 export default function DashboardPage() {
-  const [profile, setProfile] =
-    useState<Profile | null>(null);
+  // The session and the profile row are already resolved by ProfileProvider in
+  // the app shell, so this page reuses them instead of re-fetching the same
+  // data. A profile edit is therefore reflected in the greeting below without
+  // an extra round trip or a manual refresh.
+  const { user, profile } = useProfile();
 
   const [requests, setRequests] =
     useState<PurchaseRequest[]>([]);
@@ -53,54 +52,11 @@ export default function DashboardPage() {
       setLoading(true);
       setError("");
 
-      // ==========================================
-      // GET AUTHENTICATED USER
-      // ==========================================
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError) {
-        throw new Error(
-          authError.message
-        );
-      }
-
       if (!user) {
         throw new Error(
           "You are not authenticated."
         );
       }
-
-      // ==========================================
-      // GET EMPLOYEE PROFILE
-      // ==========================================
-      const {
-        data: profileData,
-        error: profileError,
-      } = await supabase
-        .from("profiles")
-        .select(
-          "full_name, employee_id"
-        )
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (profileError) {
-        console.error(
-          "Profile error:",
-          profileError
-        );
-
-        throw new Error(
-          profileError.message
-        );
-      }
-
-      setProfile(
-        profileData ?? null
-      );
 
       // ==========================================
       // GET THIS EMPLOYEE'S REQUESTS
@@ -156,11 +112,11 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadDashboard();
+    void loadDashboard();
   }, [loadDashboard]);
 
   // ==========================================

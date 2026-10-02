@@ -89,8 +89,11 @@ export default function ApproverRequestDetailsPage() {
   const [error, setError] =
     useState("");
 
-  const [actionLoading, setActionLoading] =
-    useState(false);
+  // Tracked separately so only the button the user actually pressed shows a
+  // spinner, and so the two actions cannot race each other.
+  const [approving, setApproving] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const actionLoading = approving || rejecting;
 
   const [rejectionReason, setRejectionReason] =
     useState("");
@@ -131,7 +134,6 @@ export default function ApproverRequestDetailsPage() {
           "You are not authenticated."
         );
       }
-      console.log("AUTH USER ID:", user.id);
       // --------------------------------
       // Get request by ID
       // --------------------------------
@@ -331,7 +333,7 @@ export default function ApproverRequestDetailsPage() {
 
     const supabase = createClient();
 
-    setActionLoading(true);
+    setApproving(true);
     setActionError("");
 
     try {
@@ -354,7 +356,6 @@ export default function ApproverRequestDetailsPage() {
           "You are not authenticated."
         );
       }
-      console.log("AUTH USER ID:", user.id);
 
       // --------------------------------
       // Make sure request is still pending
@@ -367,8 +368,15 @@ export default function ApproverRequestDetailsPage() {
 
       // --------------------------------
       // Approve request
+      //
+      // `select(...)` is essential here. Without it PostgREST reports success
+      // even when zero rows were updated, so a write that was filtered out by
+      // Row Level Security -- or one lost to a concurrent approver -- would be
+      // shown to the user as a successful approval. Selecting the updated row
+      // lets us detect that case and report it honestly.
       // --------------------------------
       const {
+        data: updatedRequest,
         error: updateError,
       } = await supabase
         .from("purchase_requests")
@@ -379,7 +387,9 @@ export default function ApproverRequestDetailsPage() {
           reviewed_by: user.id,
         })
         .eq("id", request.id)
-        .eq("status", "pending");
+        .eq("status", "pending")
+        .select("id, status")
+        .maybeSingle();
 
       if (updateError) {
         console.error(
@@ -389,6 +399,12 @@ export default function ApproverRequestDetailsPage() {
 
         throw new Error(
           updateError.message
+        );
+      }
+
+      if (!updatedRequest) {
+        throw new Error(
+          "This request could not be approved. It may have been handled by another approver already."
         );
       }
 
@@ -418,6 +434,17 @@ export default function ApproverRequestDetailsPage() {
         );
       }
 
+      // Reflect the new status locally so the screen is accurate even before
+      // the redirect finishes.
+      setRequest((previous) =>
+        previous
+          ? {
+              ...previous,
+              status: updatedRequest.status,
+            }
+          : previous
+      );
+
       // --------------------------------
       // Go back to dashboard
       // --------------------------------
@@ -436,8 +463,8 @@ export default function ApproverRequestDetailsPage() {
           ? err.message
           : "Failed to approve request."
       );
-
-      setActionLoading(false);
+    } finally {
+      setApproving(false);
     }
   }
 
@@ -462,7 +489,7 @@ export default function ApproverRequestDetailsPage() {
 
     const supabase = createClient();
 
-    setActionLoading(true);
+    setRejecting(true);
     setActionError("");
 
     try {
@@ -481,42 +508,10 @@ export default function ApproverRequestDetailsPage() {
         );
       }
 
-      console.log(
-        "AUTH USER ID:",
-        user.id
-      );
-
       const {
         data: isApprover,
         error: approverError,
       } = await supabase.rpc("is_approver");
-
-      console.log(
-        "========== RLS DEBUG =========="
-      );
-      console.log(
-        "AUTH USER ID:",
-        user.id
-      );
-      console.log(
-        "IS APPROVER:",
-        isApprover
-      );
-      console.log(
-        "APPROVER ERROR:",
-        approverError
-      );
-      console.log(
-        "REQUEST STATUS:",
-        request.status
-      );
-      console.log(
-        "REQUEST ID:",
-        request.id
-      );
-      console.log(
-        "================================"
-      );
 
       if (approverError) {
         throw new Error(
@@ -549,10 +544,8 @@ export default function ApproverRequestDetailsPage() {
         })
         .eq("id", request.id)
         .eq("status", "pending")
-        .select()
-        .single();
-
-        console.log("MINIMAL UPDATE ERROR:", updateError);
+        .select("id, status")
+        .maybeSingle();
 
       if (updateError) {
         console.error(
@@ -610,7 +603,7 @@ export default function ApproverRequestDetailsPage() {
           : "Failed to reject request."
       );
     } finally {
-      setActionLoading(false);
+      setRejecting(false);
     }
   }
   // ==========================================
@@ -851,8 +844,8 @@ export default function ApproverRequestDetailsPage() {
                     className="bg-emerald-600 text-white hover:bg-emerald-500"
                   >
                     <CheckCircle2 />
-                    {actionLoading
-                      ? "Processing..."
+                    {approving
+                      ? "Approving..."
                       : "Approve Request"}
                   </Button>
 
@@ -864,8 +857,8 @@ export default function ApproverRequestDetailsPage() {
                     className="text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
                   >
                     <XCircle />
-                    {actionLoading
-                      ? "Processing..."
+                    {rejecting
+                      ? "Rejecting..."
                       : "Reject Request"}
                   </Button>
                 </div>

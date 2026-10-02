@@ -309,7 +309,7 @@ export default function AdminLogsPage() {
 
                       {/* Title */}
                       <TableCell>
-                        <p className="max-w-220px truncate font-medium text-foreground">
+                        <p className="max-w-[220px] truncate font-medium text-foreground">
                           {request?.title ?? "Unknown request"}
                         </p>
                       </TableCell>
@@ -328,7 +328,7 @@ export default function AdminLogsPage() {
 
                       {/* Remarks */}
                       <TableCell>
-                        <p className="max-w-260px text-sm text-muted-foreground">
+                        <p className="max-w-[260px] text-sm text-muted-foreground">
                           {log.remarks || "No remarks"}
                         </p>
                       </TableCell>

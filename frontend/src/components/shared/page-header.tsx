@@ -15,7 +15,9 @@ export function PageHeader({ title, description, children }: PageHeaderProps) {
         </h1>
 
         {description && (
-          <p className="text-sm text-muted-foreground">{description}</p>
+          <p className="max-w-2xl text-sm text-pretty text-muted-foreground">
+            {description}
+          </p>
         )}
       </div>
 

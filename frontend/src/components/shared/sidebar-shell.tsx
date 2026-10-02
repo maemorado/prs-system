@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
+import { useProfile } from "@/src/components/shared/profile-provider";
+import { friendlyError } from "@/src/lib/errors";
 import { cn } from "cn";
 import {
   LogOut,
@@ -97,58 +99,42 @@ function SidebarNav({
 function UserFooter({ roleLabel }: { roleLabel: string }) {
   const router = useRouter();
 
-  const [label, setLabel] = useState<{ name: string; email: string } | null>(null);
+  // Read the shared profile so a name edited on the profile page is reflected
+  // here immediately, and so this component does not re-fetch the same row the
+  // app shell has already loaded.
+  const { profile } = useProfile();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      const supabase = createClient();
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (cancelled || !user) {
-        return;
-      }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (cancelled) {
-        return;
-      }
-
-      setLabel({
-        name: profile?.full_name ?? "User",
-        email: user.email ?? "",
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
 
   async function handleLogout() {
+    if (loggingOut) {
+      return;
+    }
+
+    setLoggingOut(true);
+    setLogoutError("");
+
     const supabase = createClient();
 
     const { error } = await supabase.auth.signOut();
 
     if (error) {
       console.error("Logout error:", error);
+
+      setLogoutError(
+        friendlyError(error, "Unable to log out. Please try again.")
+      );
+      setLoggingOut(false);
+
       return;
     }
 
-    router.push("/auth/login");
+    router.replace("/auth/login");
     router.refresh();
   }
 
-  const name = label?.name ?? "User";
+  const name = profile?.full_name || "User";
   const initials = name
     .split(" ")
     .map((part) => part.charAt(0))
@@ -157,26 +143,35 @@ function UserFooter({ roleLabel }: { roleLabel: string }) {
     .toUpperCase();
 
   return (
-    <div className="flex items-center gap-3 border-t border-border p-4">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-        {initials}
-      </span>
+    <div className="border-t border-border p-4">
+      <div className="flex items-center gap-3">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+          {initials}
+        </span>
 
-      <div className="min-w-0 flex-1 leading-tight">
-        <p className="truncate text-sm font-medium text-foreground">{name}</p>
-        <p className="truncate text-xs text-muted-foreground">{roleLabel}</p>
+        <div className="min-w-0 flex-1 leading-tight">
+          <p className="truncate text-sm font-medium text-foreground">{name}</p>
+          <p className="truncate text-xs text-muted-foreground">{roleLabel}</p>
+        </div>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={handleLogout}
+          disabled={loggingOut}
+          aria-label="Log out"
+          title="Log out"
+        >
+          <LogOut className="size-4" />
+        </Button>
       </div>
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        onClick={handleLogout}
-        aria-label="Log out"
-        title="Log out"
-      >
-        <LogOut className="size-4" />
-      </Button>
+      {logoutError && (
+        <p role="alert" className="mt-2 text-xs text-destructive">
+          {logoutError}
+        </p>
+      )}
     </div>
   );
 }

@@ -1,41 +1,45 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/src/lib/supabase/client";
 import { PageLoader } from "@/src/components/shared/state";
+import {
+  ProfileProvider,
+  useProfile,
+} from "@/src/components/shared/profile-provider";
+
+/**
+ * The authenticated shell.
+ *
+ * `ProfileProvider` is the single place that resolves the session and the
+ * `profiles` row, so the guard below and every consumer (sidebar, profile page,
+ * dashboard) share one round trip instead of each re-fetching the same data.
+ */
+function GuardedContent({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const { status } = useProfile();
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.replace("/auth/login");
+    }
+  }, [status, router]);
+
+  if (status !== "authenticated") {
+    return <PageLoader label="Checking your session..." />;
+  }
+
+  return <>{children}</>;
+}
 
 export default function ProtectedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const supabase = createClient();
-
-    async function checkUser() {
-      const {
-        data: { user },
-        error,
-      } = await supabase.auth.getUser();
-
-      if (error || !user) {
-        router.replace("/auth/login");
-        return;
-      }
-
-      setLoading(false);
-    }
-
-    checkUser();
-  }, [router]);
-
-  if (loading) {
-    return <PageLoader label="Checking your session..." />;
-  }
-
-  return <>{children}</>;
+  return (
+    <ProfileProvider>
+      <GuardedContent>{children}</GuardedContent>
+    </ProfileProvider>
+  );
 }

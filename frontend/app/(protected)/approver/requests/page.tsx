@@ -132,7 +132,7 @@ export default function AdminRequestsPage() {
 
                     <TableCell>{request.title}</TableCell>
 
-                    <TableCell className="max-w-220px truncate">
+                    <TableCell className="max-w-[220px] truncate">
                       {request.purpose}
                     </TableCell>
 

@@ -43,8 +43,6 @@ export default function AddRequestItem({
 
         const data = await getCategories();
 
-        console.log("Categories from Supabase:", data);
-
         setCategories(data);
       } catch (err) {
         console.error("Category error:", err);

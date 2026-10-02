@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { createClient } from "@/src/lib/supabase/client";
+import { useProfile } from "@/src/components/shared/profile-provider";
 import {
   Card,
   CardContent,
@@ -84,6 +85,10 @@ function PasswordToggle({
 }
 
 export default function ApproverProfilePage() {
+  // Shared profile state: updating it here updates the sidebar and every other
+  // consumer of the profile at the same time.
+  const { updateProfile } = useProfile();
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const [department, setDepartment] = useState<Department | null>(null);
   const [email, setEmail] = useState("");
@@ -283,45 +288,31 @@ export default function ApproverProfilePage() {
     setEditError("");
     setEditSuccess("");
 
-    const fullName = editFullName.trim();
-    const employeeId = editEmployeeId.trim();
-
-    if (!fullName) {
+    if (!editFullName.trim()) {
       setEditError("Full name is required.");
       return;
     }
 
     setEditSubmitting(true);
 
-    const supabase = createClient();
-
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({
-        full_name: fullName,
-        employee_id: employeeId || null,
-        department_id: editDepartmentId || null,
-      })
-      .eq("id", profile.id);
+    // Delegate the write to the shared provider. It restricts the payload to the
+    // non-privileged allowlist (full_name, employee_id, department_id), scopes
+    // the write to the signed-in user's own id, and treats RLS as the real
+    // authority -- reporting a denied write instead of a false success. It also
+    // updates shared state, so the sidebar and every other consumer of the
+    // profile reflects the change immediately.
+    const { error: updateError } = await updateProfile({
+      full_name: editFullName,
+      employee_id: editEmployeeId,
+      department_id: editDepartmentId || null,
+    });
 
     setEditSubmitting(false);
 
     if (updateError) {
-      console.error("Profile update error:", updateError);
-      setEditError(updateError.message);
+      setEditError(updateError);
       return;
     }
-
-    setProfile((prev) =>
-      prev
-        ? {
-            ...prev,
-            full_name: fullName,
-            employee_id: employeeId || null,
-            department_id: editDepartmentId || null,
-          }
-        : prev
-    );
 
     setDepartment(
       departments.find((item) => item.id === editDepartmentId) ?? null

@@ -7,19 +7,58 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function PageLoader({ label }: { label?: string }) {
   return (
     <div className="flex min-h-[60dvh] flex-col items-center justify-center gap-3">
-      <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      <span className="flex size-11 items-center justify-center rounded-full bg-muted">
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      </span>
 
       {label && <p className="text-sm text-muted-foreground">{label}</p>}
     </div>
   );
 }
 
-export function ListSkeleton() {
+export function StatsSkeleton() {
   return (
-    <div className="space-y-4" aria-hidden="true">
-      <Skeleton className="h-28 w-full rounded-xl" />
-      <Skeleton className="h-28 w-full rounded-xl" />
-      <Skeleton className="h-28 w-full rounded-xl" />
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div
+          key={index}
+          className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4"
+          aria-hidden="true"
+        >
+          <Skeleton className="size-10 shrink-0 rounded-lg" />
+          <div className="space-y-2">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-5 w-12" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function ListSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="space-y-3" aria-hidden="true">
+      {Array.from({ length: rows }).map((_, index) => (
+        <div
+          key={index}
+          className="rounded-xl border border-border/60 bg-card p-4"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-4 w-1/2 max-w-64" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+
+            <Skeleton className="h-6 w-24 shrink-0 rounded-full" />
+          </div>
+
+          <div className="mt-4 flex items-center justify-between border-t border-border/60 pt-3">
+            <Skeleton className="h-3 w-40" />
+            <Skeleton className="h-4 w-16" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -27,8 +66,66 @@ export function ListSkeleton() {
 export function CardSkeleton() {
   return (
     <div className="space-y-4" aria-hidden="true">
-      <Skeleton className="h-8 w-48 rounded-lg" />
-      <Skeleton className="h-40 w-full rounded-xl" />
+      <div className="rounded-xl border border-border/60 bg-card p-5">
+        <Skeleton className="h-4 w-36" />
+        <div className="mt-4 space-y-3">
+          <Skeleton className="h-8 w-full rounded-lg" />
+          <Skeleton className="h-8 w-full rounded-lg" />
+          <Skeleton className="h-8 w-2/3 rounded-lg" />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border/60 bg-card p-5">
+        <Skeleton className="h-4 w-28" />
+        <div className="mt-4 space-y-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton key={index} className="h-14 w-full rounded-lg" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function TableSkeleton({
+  rows = 5,
+  columns = 4,
+}: {
+  rows?: number;
+  columns?: number;
+}) {
+  const widths = ["w-24", "w-40", "w-28", "w-20", "w-32"];
+
+  return (
+    <div
+      className="overflow-hidden rounded-xl border border-border/60 bg-card"
+      aria-hidden="true"
+    >
+      <div className="flex items-center gap-4 border-b border-border/60 bg-muted/40 px-4 py-3.5 dark:bg-muted/20">
+        {Array.from({ length: columns }).map((_, index) => (
+          <Skeleton
+            key={index}
+            className={cn("h-3 rounded-full", widths[index % widths.length])}
+          />
+        ))}
+      </div>
+
+      {Array.from({ length: rows }).map((_, rowIndex) => (
+        <div
+          key={rowIndex}
+          className="flex items-center gap-4 border-b border-border/60 px-4 py-3.5 last:border-b-0"
+        >
+          {Array.from({ length: columns }).map((_, columnIndex) => (
+            <Skeleton
+              key={columnIndex}
+              className={cn(
+                "h-3.5 rounded-full",
+                columnIndex === 0 ? "w-28" : "w-20"
+              )}
+            />
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -54,7 +151,10 @@ export function ErrorState({
       className="flex flex-col items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-5"
     >
       <div className="flex items-center gap-2 text-destructive">
-        <TriangleAlert className="size-4" />
+        <span className="flex size-7 items-center justify-center rounded-full bg-destructive/10">
+          <TriangleAlert className="size-4" />
+        </span>
+
         <p className="text-sm font-medium">{title}</p>
       </div>
 
@@ -98,7 +198,7 @@ export function EmptyState({
       )}
     >
       {Icon && (
-        <span className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+        <span className="flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
           <Icon className="size-5" />
         </span>
       )}

@@ -117,11 +117,6 @@ export default function CreateRequestPage() {
 
       const authenticatedUserId = authUser.id;
 
-      console.log(
-        "Creating purchase request for auth user:",
-        authenticatedUserId
-      );
-
       const { data: request, error: requestError } =
         await supabase
           .from("purchase_requests")
