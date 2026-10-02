@@ -77,7 +77,9 @@ export function friendlyError(
   // ------------------------------------------------------------------
   if (
     message.includes("duplicate key") ||
-    message.includes("already exists")
+    message.includes("already exists") ||
+    message.includes("already registered") ||
+    message.includes("already been registered")
   ) {
     return "That value is already in use.";
   }

@@ -170,15 +170,8 @@ export default function ProfilePage() {
         return;
       }
 
-      console.log("[EMPLOYEE PROFILE] auth user id:", user.id);
-      console.log("[EMPLOYEE PROFILE] raw profile:", profileData);
-      console.log(
-        "[EMPLOYEE PROFILE] department_id:",
-        profileData.department_id
-      );
-
-      // The dropdown options come from the same `departments` table, in the
-      // same order, as the Approver profile dropdown.
+      // The department list is read from the same `departments` table the
+      // Approver screens use, purely to turn the stored id into a display name.
       const { data: departmentsData, error: departmentsError } =
         await supabase
           .from("departments")
@@ -197,27 +190,12 @@ export default function ProfilePage() {
         setDepartmentsError("");
       }
 
-      // Resolve the assigned department's name from that same list, so the
-      // display never needs a second query and never disagrees with the
-      // dropdown contents.
+      // Resolve the assigned department's name from that same list.
       const currentDepartment = profileData.department_id
         ? (departmentOptions.find(
             (item) => item.id === profileData.department_id
           ) ?? null)
         : null;
-
-      const resolvedDepartment =
-        currentDepartment?.name ??
-        (profileData.department_id ? "Unknown department" : "Unassigned");
-
-      console.log(
-        "[EMPLOYEE PROFILE] resolved department object:",
-        currentDepartment
-      );
-      console.log(
-        "[EMPLOYEE PROFILE] resolved department:",
-        resolvedDepartment
-      );
 
       setDepartments(departmentOptions);
 

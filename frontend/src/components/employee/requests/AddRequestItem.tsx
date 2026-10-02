@@ -255,9 +255,9 @@ export default function AddRequestItem({ onAdd }: AddRequestItemProps) {
 
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-muted-foreground"
+                  className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm text-muted-foreground"
                 >
-                  PHP
+                  ₱
                 </span>
               </div>
             </div>

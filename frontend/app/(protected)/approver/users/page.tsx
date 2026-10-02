@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/src/lib/supabase/client";
+import { createClient, createEphemeralAuthClient } from "@/src/lib/supabase/client";
 import { useProfile } from "@/src/components/shared/profile-provider";
 import { friendlyError } from "@/src/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Card,
   CardAction,
@@ -21,7 +22,12 @@ import {
   NativeSelect,
   NativeSelectOption,
 } from "@/components/ui/native-select";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -42,16 +48,24 @@ import {
   ArrowLeft,
   Building2,
   Check,
-  Info,
+  Eye,
+  EyeOff,
   Loader2,
+  Pencil,
   Search,
   ShieldCheck,
   TriangleAlert,
   UserCog,
+  UserPlus,
   Users,
+  X,
 } from "lucide-react";
 import { PageHeader } from "@/src/components/shared/page-header";
-import { EmptyState, ErrorState, ListSkeleton } from "@/src/components/shared/state";
+import {
+  EmptyState,
+  ErrorState,
+  ListSkeleton,
+} from "@/src/components/shared/state";
 import { StatCard } from "@/src/components/shared/stat-card";
 import { capitalize, formatDate } from "@/src/lib/format";
 
@@ -70,10 +84,34 @@ type Department = {
   name: string;
 };
 
+const PROFILE_COLUMNS = `
+  id,
+  full_name,
+  employee_id,
+  role,
+  department_id,
+  created_at,
+  updated_at
+`;
+
+/** Matches the minimum already enforced on the profile password form. */
+const MIN_PASSWORD_LENGTH = 8;
+
+function initialsOf(name: string) {
+  return (
+    name
+      .split(" ")
+      .map((part) => part.charAt(0))
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "?"
+  );
+}
+
 /**
- * Roles that exist in the `profiles.role` column. Read from the data rather
- * than treated as a fixed business list, so a new role added in the database is
- * still selectable without a code change, and no invented role can be offered.
+ * Roles are read from the rows already loaded rather than hardcoded, so a role
+ * added to the database is offered automatically and no invented role can be
+ * selected.
  */
 function roleOptionsFrom(users: UserProfile[]) {
   const roles = new Set<string>();
@@ -98,6 +136,31 @@ function getRoleBadgeVariant(role: string) {
   }
 }
 
+function RevealPasswordToggle({
+  visible,
+  onToggle,
+}: {
+  visible: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={visible ? "Hide password" : "Show password"}
+      aria-pressed={visible}
+      title={visible ? "Hide password" : "Show password"}
+      className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {visible ? (
+        <EyeOff className="size-4" />
+      ) : (
+        <Eye className="size-4" />
+      )}
+    </button>
+  );
+}
+
 export default function ApproverUsersPage() {
   const { profile: currentProfile } = useProfile();
 
@@ -110,49 +173,57 @@ export default function ApproverUsersPage() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
 
-  // The row currently open in the manage dialog.
-  const [editing, setEditing] = useState<UserProfile | null>(null);
+  /** Banner shown after an account is created. */
+  const [createdNotice, setCreatedNotice] = useState<{
+    name: string;
+    email: string;
+    needsConfirmation: boolean;
+  } | null>(null);
 
+  // ---------------------------------------------------------------------
+  // Manage account dialog
+  // ---------------------------------------------------------------------
+  const [editing, setEditing] = useState<UserProfile | null>(null);
   const [editFullName, setEditFullName] = useState("");
   const [editEmployeeId, setEditEmployeeId] = useState("");
   const [editRole, setEditRole] = useState("");
   const [editDepartmentId, setEditDepartmentId] = useState("");
-
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
 
+  // ---------------------------------------------------------------------
+  // Create account dialog
+  // ---------------------------------------------------------------------
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newFullName, setNewFullName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newEmployeeId, setNewEmployeeId] = useState("");
+  const [newRole, setNewRole] = useState("");
+  const [newDepartmentId, setNewDepartmentId] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newConfirmPassword, setNewConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+
   const loadUsers = useCallback(async () => {
     // Note: every `setState` below sits after an `await`. Setting state
-    // synchronously here would make this effect cascade a second render before
-    // the request even starts.
+    // synchronously here would make the mount effect cascade a second render
+    // before the request even starts.
     try {
       const supabase = createClient();
 
       const [usersResult, departmentsResult] = await Promise.all([
         supabase
           .from("profiles")
-          .select(
-            `
-            id,
-            full_name,
-            employee_id,
-            role,
-            department_id,
-            created_at,
-            updated_at
-          `
-          )
-          .order("full_name", {
-            ascending: true,
-          }),
+          .select(PROFILE_COLUMNS)
+          .order("full_name", { ascending: true }),
 
         supabase
           .from("departments")
           .select("id, name")
-          .order("name", {
-            ascending: true,
-          }),
+          .order("name", { ascending: true }),
       ]);
 
       if (usersResult.error) {
@@ -196,6 +267,16 @@ export default function ApproverUsersPage() {
 
   const roleOptions = useMemo(() => roleOptionsFrom(users), [users]);
 
+  const departmentNameById = useMemo(() => {
+    const map = new Map<string, string>();
+
+    for (const department of departments) {
+      map.set(department.id, department.name);
+    }
+
+    return map;
+  }, [departments]);
+
   const filteredUsers = useMemo(() => {
     const term = search.trim().toLowerCase();
 
@@ -215,24 +296,6 @@ export default function ApproverUsersPage() {
     });
   }, [users, search, roleFilter]);
 
-  const departmentNameById = useMemo(() => {
-    const map = new Map<string, string>();
-
-    for (const department of departments) {
-      map.set(department.id, department.name);
-    }
-
-    return map;
-  }, [departments]);
-
-  function getDepartmentName(departmentId: string | null) {
-    if (!departmentId) {
-      return "Not assigned";
-    }
-
-    return departmentNameById.get(departmentId) ?? "Unknown department";
-  }
-
   const counts = useMemo(
     () => ({
       total: users.length,
@@ -242,6 +305,35 @@ export default function ApproverUsersPage() {
     }),
     [users]
   );
+
+  function getDepartmentName(departmentId: string | null) {
+    if (!departmentId) {
+      return "Not assigned";
+    }
+
+    return departmentNameById.get(departmentId) ?? "Unknown department";
+  }
+
+  function resetCreateForm() {
+    setNewFullName("");
+    setNewEmail("");
+    setNewEmployeeId("");
+    setNewRole("");
+    setNewDepartmentId("");
+    setNewPassword("");
+    setNewConfirmPassword("");
+    setShowPassword(false);
+    setCreateError("");
+  }
+
+  function openCreateDialog() {
+    resetCreateForm();
+
+    // Default to the most common role so the common case is one click.
+    setNewRole(roleOptions.includes("employee") ? "employee" : "");
+
+    setCreateOpen(true);
+  }
 
   function openManageDialog(user: UserProfile) {
     setEditing(user);
@@ -253,6 +345,9 @@ export default function ApproverUsersPage() {
     setSaveSuccess("");
   }
 
+  // =====================================================================
+  // Update an existing account
+  // =====================================================================
   async function handleSaveUser(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -271,11 +366,8 @@ export default function ApproverUsersPage() {
     }
 
     // Guard against an approver removing their own approver access, which
-    // would lock them (and potentially everyone) out of this page.
-    if (
-      editing.id === currentProfile?.id &&
-      editRole !== editing.role
-    ) {
+    // would lock them out of this page.
+    if (editing.id === currentProfile?.id && editRole !== editing.role) {
       setSaveError(
         "You cannot change your own role. Ask another approver to do it."
       );
@@ -286,10 +378,10 @@ export default function ApproverUsersPage() {
 
     const supabase = createClient();
 
-    // Scoped to the target row so this can never touch another user by
-    // accident. Row Level Security remains the real authority: the `select`
-    // below lets us detect a silently-rejected write instead of reporting a
-    // success that never happened.
+    // Scoped to the target row so this can never touch another account by
+    // accident. Access rules remain the real authority: the `select` below lets
+    // us detect a rejected write instead of reporting a success that never
+    // happened.
     const { data: updated, error: updateError } = await supabase
       .from("profiles")
       .update({
@@ -299,17 +391,7 @@ export default function ApproverUsersPage() {
         department_id: editDepartmentId || null,
       })
       .eq("id", editing.id)
-      .select(
-        `
-        id,
-        full_name,
-        employee_id,
-        role,
-        department_id,
-        created_at,
-        updated_at
-      `
-      )
+      .select(PROFILE_COLUMNS)
       .maybeSingle();
 
     if (updateError) {
@@ -318,7 +400,7 @@ export default function ApproverUsersPage() {
       setSaveError(
         friendlyError(
           updateError,
-          "Unable to update this user. Please try again."
+          "Unable to update this account. Please try again."
         )
       );
 
@@ -328,15 +410,15 @@ export default function ApproverUsersPage() {
 
     if (!updated) {
       setSaveError(
-        "Nothing was saved. Your role is probably not permitted to change these fields for this user."
+        "Nothing was saved. Your role is probably not permitted to change these details for this account."
       );
 
       setSaving(false);
       return;
     }
 
-    // Replace the row from what the database actually stored, so the table never
-    // shows an optimistic value that was rejected or normalised server-side.
+    // Replace the row from what was actually stored, so the table never shows
+    // an optimistic value that was rejected or adjusted.
     setUsers((current) =>
       current.map((user) => (user.id === updated.id ? updated : user))
     );
@@ -344,6 +426,156 @@ export default function ApproverUsersPage() {
     setEditing(updated);
     setSaving(false);
     setSaveSuccess(`${updated.full_name}'s account has been updated.`);
+  }
+
+  // =====================================================================
+  // Create a new account
+  // =====================================================================
+  async function handleCreateUser(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (creating) {
+      return;
+    }
+
+    setCreateError("");
+
+    const fullName = newFullName.trim();
+    const email = newEmail.trim();
+    const password = newPassword;
+
+    if (!fullName) {
+      setCreateError("Full name is required.");
+      return;
+    }
+
+    if (!email) {
+      setCreateError("Email address is required.");
+      return;
+    }
+
+    // Deliberately loose: the authoritative check is the response from the
+    // account service, which gives a far clearer message than a regex would.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setCreateError("Enter a valid email address.");
+      return;
+    }
+
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setCreateError(
+        `Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`
+      );
+      return;
+    }
+
+    if (password !== newConfirmPassword) {
+      setCreateError("Password and confirmation do not match.");
+      return;
+    }
+
+    setCreating(true);
+
+    // A throwaway client, so creating an account never disturbs the approver's
+    // own signed-in session.
+    const auth = createEphemeralAuthClient();
+
+    const { data, error: signUpError } = await auth.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: fullName } },
+    });
+
+    if (signUpError) {
+      console.error("Account creation error:", signUpError);
+
+      setCreateError(
+        friendlyError(
+          signUpError,
+          "Unable to create this account. Please try again."
+        )
+      );
+
+      setCreating(false);
+      return;
+    }
+
+    const newUserId = data.user?.id;
+
+    if (!newUserId) {
+      setCreateError(
+        "The account could not be created. Please try again."
+      );
+
+      setCreating(false);
+      return;
+    }
+
+    // Attach the account details to a user record. Updating first and only
+    // inserting when nothing came back means this works whether or not the
+    // account was already given a record automatically, without failing on a
+    // duplicate.
+    const supabase = createClient();
+
+    const details = {
+      full_name: fullName,
+      employee_id: newEmployeeId.trim() || null,
+      role: newRole,
+      department_id: newDepartmentId || null,
+    };
+
+    const { data: linked, error: linkError } = await supabase
+      .from("profiles")
+      .update(details)
+      .eq("id", newUserId)
+      .select(PROFILE_COLUMNS)
+      .maybeSingle();
+
+    if (linkError) {
+      console.error("Account details error:", linkError);
+
+      setCreateError(
+        friendlyError(
+          linkError,
+          "The sign-in was created but its details could not be saved. Please try again."
+        )
+      );
+
+      setCreating(false);
+      return;
+    }
+
+    if (!linked) {
+      const { error: insertError } = await supabase
+        .from("profiles")
+        .insert({ id: newUserId, ...details });
+
+      if (insertError) {
+        console.error("Account record error:", insertError);
+
+        setCreateError(
+          friendlyError(
+            insertError,
+            "The sign-in was created but its details could not be saved. Please contact an administrator."
+          )
+        );
+
+        setCreating(false);
+        return;
+      }
+    }
+
+    // `session` is only returned when the account is able to sign in straight
+    // away. Without it the person has to confirm their email address first.
+    const needsConfirmation = data.session === null;
+
+    setCreating(false);
+    setCreateOpen(false);
+    resetCreateForm();
+
+    setCreatedNotice({ name: fullName, email, needsConfirmation });
+
+    // Refresh so the new account appears on its own, with no manual reload.
+    await loadUsers();
   }
 
   if (loading) {
@@ -359,16 +591,57 @@ export default function ApproverUsersPage() {
     <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <PageHeader
         title="User Management"
-        description="View every account, and manage roles and department assignments."
+        description="Create accounts, assign departments, and manage access."
       >
-        <Button
-          variant="ghost"
-          render={<Link href="/approver/dashboard" />}
-        >
-          <ArrowLeft />
-          Back to Dashboard
-        </Button>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+          <Button
+            variant="ghost"
+            render={<Link href="/approver/dashboard" />}
+          >
+            <ArrowLeft />
+            Back to Dashboard
+          </Button>
+
+          <Button onClick={openCreateDialog}>
+            <UserPlus className="size-4" />
+            Create Account
+          </Button>
+        </div>
       </PageHeader>
+
+      {createdNotice && (
+        <Alert>
+          <Check className="size-4" />
+          <AlertTitle>Account created</AlertTitle>
+          <AlertDescription>
+            <span className="block">
+              {createdNotice.name} can now sign in with{" "}
+              <span className="font-medium break-all text-foreground">
+                {createdNotice.email}
+              </span>
+              .
+            </span>
+
+            {createdNotice.needsConfirmation && (
+              <span className="mt-1 block">
+                They will need to confirm their email address before their
+                first sign-in.
+              </span>
+            )}
+          </AlertDescription>
+
+          <AlertAction>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setCreatedNotice(null)}
+              aria-label="Dismiss"
+            >
+              <X className="size-4" />
+            </Button>
+          </AlertAction>
+        </Alert>
+      )}
 
       {error && (
         <ErrorState message={error} onRetry={handleRetry} />
@@ -397,24 +670,6 @@ export default function ApproverUsersPage() {
         />
       </div>
 
-      {/*
-        Capabilities that Supabase's Admin API owns. They need the service_role
-        key, which must never ship to a browser, so they are called out instead
-        of being faked with client-side writes.
-      */}
-      <Alert>
-        <Info className="size-4" />
-        <AlertTitle>Managed by your Supabase admin</AlertTitle>
-        <AlertDescription>
-          Creating sign-in accounts, editing other users&rsquo; email
-          addresses, and activating or deactivating accounts are all
-          Supabase Auth admin operations. They require the service&nbsp;role
-          key, which is deliberately not exposed to this browser app. Everything
-          that lives in the <code>profiles</code> table &mdash; name,
-          employee ID, role and department &mdash; is managed below.
-        </AlertDescription>
-      </Alert>
-
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -423,7 +678,7 @@ export default function ApproverUsersPage() {
           </CardTitle>
 
           <CardDescription>
-            Select <strong>Manage</strong> to change a user&rsquo;s role or
+            Select the edit action on an account to change its role or
             department assignment.
           </CardDescription>
 
@@ -447,7 +702,7 @@ export default function ApproverUsersPage() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search by name or employee ID..."
-                aria-label="Search users"
+                aria-label="Search accounts"
                 className="pl-8"
               />
             </div>
@@ -475,16 +730,21 @@ export default function ApproverUsersPage() {
               icon={Users}
               title={
                 users.length === 0
-                  ? "No users found"
-                  : "No matching users"
+                  ? "No accounts yet"
+                  : "No matching accounts"
               }
               description={
                 users.length === 0
-                  ? "There are currently no users in the system."
+                  ? "Create the first account to get started."
                   : "Try a different search term or clear the role filter."
               }
               action={
-                users.length === 0 ? undefined : (
+                users.length === 0 ? (
+                  <Button onClick={openCreateDialog}>
+                    <UserPlus className="size-4" />
+                    Create Account
+                  </Button>
+                ) : (
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -499,7 +759,7 @@ export default function ApproverUsersPage() {
             />
           ) : (
             <>
-              {/* Desktop / tablet: a real table. */}
+              {/* Tablet and desktop: a real table. */}
               <div className="hidden md:block">
                 <Table>
                   <TableHeader>
@@ -509,8 +769,8 @@ export default function ApproverUsersPage() {
                       <TableHead>Role</TableHead>
                       <TableHead>Department</TableHead>
                       <TableHead>Registered</TableHead>
-                      <TableHead className="text-right">
-                        Actions
+                      <TableHead className="w-px text-right">
+                        <span className="sr-only">Actions</span>
                       </TableHead>
                     </TableRow>
                   </TableHeader>
@@ -518,17 +778,26 @@ export default function ApproverUsersPage() {
                   <TableBody>
                     {filteredUsers.map((user) => (
                       <TableRow key={user.id}>
-                        <TableCell className="font-medium break-words whitespace-normal text-foreground">
-                          {user.full_name}
+                        <TableCell className="whitespace-normal">
+                          <div className="flex items-center gap-2.5">
+                            <Avatar size="sm">
+                              <AvatarFallback className="text-[10px] font-semibold">
+                                {initialsOf(user.full_name)}
+                              </AvatarFallback>
+                            </Avatar>
 
-                          {user.id === currentProfile?.id && (
-                            <Badge
-                              variant="ghost"
-                              className="ml-2 align-middle"
-                            >
-                              You
-                            </Badge>
-                          )}
+                            <div className="min-w-0">
+                              <p className="font-medium break-words text-foreground">
+                                {user.full_name}
+
+                                {user.id === currentProfile?.id && (
+                                  <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                                    (you)
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
                         </TableCell>
 
                         <TableCell className="text-muted-foreground tabular-nums">
@@ -537,9 +806,7 @@ export default function ApproverUsersPage() {
 
                         <TableCell>
                           <Badge
-                            variant={getRoleBadgeVariant(
-                              user.role
-                            )}
+                            variant={getRoleBadgeVariant(user.role)}
                           >
                             {capitalize(user.role)}
                           </Badge>
@@ -548,9 +815,7 @@ export default function ApproverUsersPage() {
                         <TableCell className="whitespace-normal">
                           {user.department_id ? (
                             <span className="text-foreground">
-                              {getDepartmentName(
-                                user.department_id
-                              )}
+                              {getDepartmentName(user.department_id)}
                             </span>
                           ) : (
                             <Badge
@@ -562,19 +827,19 @@ export default function ApproverUsersPage() {
                           )}
                         </TableCell>
 
-                        <TableCell className="text-muted-foreground">
+                        <TableCell className="text-muted-foreground whitespace-nowrap">
                           {formatDate(user.created_at)}
                         </TableCell>
 
                         <TableCell className="text-right">
                           <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              openManageDialog(user)
-                            }
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => openManageDialog(user)}
+                            aria-label={`Edit ${user.full_name}`}
+                            title={`Edit ${user.full_name}`}
                           >
-                            Manage
+                            <Pencil className="size-4" />
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -583,57 +848,63 @@ export default function ApproverUsersPage() {
                 </Table>
               </div>
 
-              {/* Mobile: stacked cards, so nothing is clipped and there is no
+              {/* Mobile: stacked rows, so nothing is clipped and there is no
                   horizontal scrolling. */}
               <ul className="space-y-3 md:hidden">
                 {filteredUsers.map((user) => (
                   <li
                     key={user.id}
-                    className="space-y-2.5 rounded-lg border border-border p-3"
+                    className="flex items-start gap-3 rounded-lg border border-border p-3"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold break-words text-foreground">
-                          {user.full_name}
-                        </p>
+                    <Avatar size="sm">
+                      <AvatarFallback className="text-[10px] font-semibold">
+                        {initialsOf(user.full_name)}
+                      </AvatarFallback>
+                    </Avatar>
 
-                        <p className="text-xs text-muted-foreground tabular-nums">
-                          {user.employee_id || "No employee ID"}
-                        </p>
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <p className="text-sm font-medium break-words text-foreground">
+                        {user.full_name}
+                        {user.id === currentProfile?.id && (
+                          <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                            (you)
+                          </span>
+                        )}
+                      </p>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge
+                          variant={getRoleBadgeVariant(user.role)}
+                        >
+                          {capitalize(user.role)}
+                        </Badge>
+
+                        <Badge
+                          variant="outline"
+                          className="font-normal"
+                        >
+                          {getDepartmentName(user.department_id)}
+                        </Badge>
                       </div>
 
-                      <Badge
-                        variant={getRoleBadgeVariant(user.role)}
-                        className="shrink-0"
-                      >
-                        {capitalize(user.role)}
-                      </Badge>
+                      <p className="text-xs text-muted-foreground tabular-nums">
+                        {user.employee_id
+                          ? `${user.employee_id} · `
+                          : ""}
+                        Joined {formatDate(user.created_at)}
+                      </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="text-muted-foreground">
-                        Department:
-                      </span>
-
-                      <span className="font-medium text-foreground">
-                        {getDepartmentName(user.department_id)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3 border-t border-border pt-2.5">
-                      <span className="text-xs text-muted-foreground">
-                        Registered{" "}
-                        {formatDate(user.created_at)}
-                      </span>
-
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openManageDialog(user)}
-                      >
-                        Manage
-                      </Button>
-                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => openManageDialog(user)}
+                      aria-label={`Edit ${user.full_name}`}
+                      title={`Edit ${user.full_name}`}
+                      className="shrink-0"
+                    >
+                      <Pencil className="size-4" />
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -642,6 +913,278 @@ export default function ApproverUsersPage() {
         </CardContent>
       </Card>
 
+      {/* -----------------------------------------------------------------
+          Create Account
+      ----------------------------------------------------------------- */}
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          if (!open && !creating) {
+            setCreateOpen(false);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-xl">
+          <form onSubmit={handleCreateUser}>
+            <DialogHeader>
+              <DialogTitle>Create Account</DialogTitle>
+
+              <DialogDescription>
+                Set up sign-in access and assign the account to a role and
+                department.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-5 py-4">
+              {createError && (
+                <Alert variant="destructive">
+                  <TriangleAlert className="size-4" />
+                  <AlertTitle>Unable to create account</AlertTitle>
+                  <AlertDescription>
+                    {createError}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <section className="space-y-3">
+                <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                  Account Information
+                </h3>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-full-name">
+                      Full Name
+                      <span className="text-destructive">*</span>
+                    </Label>
+
+                    <Input
+                      id="new-full-name"
+                      value={newFullName}
+                      onChange={(event) =>
+                        setNewFullName(event.target.value)
+                      }
+                      placeholder="e.g. Juan Dela Cruz"
+                      autoComplete="off"
+                      required
+                      disabled={creating}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="new-email">
+                      Email Address
+                      <span className="text-destructive">*</span>
+                    </Label>
+
+                    <Input
+                      id="new-email"
+                      type="email"
+                      inputMode="email"
+                      value={newEmail}
+                      onChange={(event) =>
+                        setNewEmail(event.target.value)
+                      }
+                      placeholder="name@example.com"
+                      autoComplete="off"
+                      required
+                      disabled={creating}
+                    />
+                  </div>
+
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="new-employee-id">
+                      Employee ID
+                    </Label>
+
+                    <Input
+                      id="new-employee-id"
+                      value={newEmployeeId}
+                      onChange={(event) =>
+                        setNewEmployeeId(event.target.value)
+                      }
+                      placeholder="e.g. EMP-0001"
+                      autoComplete="off"
+                      disabled={creating}
+                      className="sm:max-w-xs"
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                  Access
+                </h3>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-role">
+                      Role
+                      <span className="text-destructive">*</span>
+                    </Label>
+
+                    <NativeSelect
+                      id="new-role"
+                      value={newRole}
+                      onChange={(event) =>
+                        setNewRole(event.target.value)
+                      }
+                      required
+                      disabled={creating}
+                      className="w-full"
+                    >
+                      <NativeSelectOption value="" disabled>
+                        Select a role
+                      </NativeSelectOption>
+
+                      {roleOptions.map((role) => (
+                        <NativeSelectOption
+                          key={role}
+                          value={role}
+                        >
+                          {capitalize(role)}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="new-department">
+                      Department
+                    </Label>
+
+                    <NativeSelect
+                      id="new-department"
+                      value={newDepartmentId}
+                      onChange={(event) =>
+                        setNewDepartmentId(event.target.value)
+                      }
+                      disabled={creating}
+                      className="w-full"
+                    >
+                      <NativeSelectOption value="">
+                        Not assigned
+                      </NativeSelectOption>
+
+                      {departments.map((department) => (
+                        <NativeSelectOption
+                          key={department.id}
+                          value={department.id}
+                        >
+                          {department.name}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                  Sign-In Security
+                </h3>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-password">
+                      Password
+                      <span className="text-destructive">*</span>
+                    </Label>
+
+                    <div className="relative">
+                      <Input
+                        id="new-password"
+                        type={showPassword ? "text" : "password"}
+                        value={newPassword}
+                        onChange={(event) =>
+                          setNewPassword(event.target.value)
+                        }
+                        placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                        autoComplete="new-password"
+                        required
+                        disabled={creating}
+                        className="pr-9"
+                      />
+
+                      <RevealPasswordToggle
+                        visible={showPassword}
+                        onToggle={() =>
+                          setShowPassword((value) => !value)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="new-confirm-password">
+                      Confirm Password
+                      <span className="text-destructive">*</span>
+                    </Label>
+
+                    <div className="relative">
+                      <Input
+                        id="new-confirm-password"
+                        type={showPassword ? "text" : "password"}
+                        value={newConfirmPassword}
+                        onChange={(event) =>
+                          setNewConfirmPassword(event.target.value)
+                        }
+                        placeholder="Re-enter the password"
+                        autoComplete="new-password"
+                        required
+                        disabled={creating}
+                        className="pr-9"
+                      />
+
+                      <RevealPasswordToggle
+                        visible={showPassword}
+                        onToggle={() =>
+                          setShowPassword((value) => !value)
+                        }
+                      />
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      Use at least {MIN_PASSWORD_LENGTH} characters — a mix of
+                      letters, numbers, and symbols.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateOpen(false)}
+                disabled={creating}
+              >
+                Cancel
+              </Button>
+
+              <Button type="submit" disabled={creating}>
+                {creating ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="size-4" />
+                    Create Account
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* -----------------------------------------------------------------
+          Manage account
+      ----------------------------------------------------------------- */}
       <Dialog
         open={editing !== null}
         onOpenChange={(open) => {
@@ -653,11 +1196,11 @@ export default function ApproverUsersPage() {
         <DialogContent className="sm:max-w-lg">
           <form onSubmit={handleSaveUser}>
             <DialogHeader>
-              <DialogTitle>Manage account</DialogTitle>
+              <DialogTitle>Edit Account</DialogTitle>
 
               <DialogDescription>
                 {editing
-                  ? `Update ${editing.full_name}'s profile, role and department assignment.`
+                  ? `Update ${editing.full_name}'s details, role and department.`
                   : ""}
               </DialogDescription>
             </DialogHeader>
@@ -683,12 +1226,7 @@ export default function ApproverUsersPage() {
                 </Alert>
               )}
 
-              <dl className="grid gap-x-6 gap-y-2 rounded-lg border border-border bg-muted/30 p-3 text-xs sm:grid-cols-2">
-                <dt className="text-muted-foreground">Account ID</dt>
-                <dd className="truncate font-mono text-foreground">
-                  {editing?.id}
-                </dd>
-
+              <dl className="grid gap-x-6 gap-y-1.5 rounded-lg border border-border bg-muted/30 p-3 text-xs sm:grid-cols-[auto_1fr]">
                 <dt className="text-muted-foreground">Registered</dt>
                 <dd className="text-foreground">
                   {editing ? formatDate(editing.created_at) : ""}
@@ -699,11 +1237,6 @@ export default function ApproverUsersPage() {
                   {editing?.updated_at
                     ? formatDate(editing.updated_at)
                     : "Never"}
-                </dd>
-
-                <dt className="text-muted-foreground">Email</dt>
-                <dd className="text-foreground">
-                  Not visible to this app
                 </dd>
               </dl>
 
@@ -753,8 +1286,7 @@ export default function ApproverUsersPage() {
                       setEditRole(event.target.value)
                     }
                     disabled={
-                      saving ||
-                      editing?.id === currentProfile?.id
+                      saving || editing?.id === currentProfile?.id
                     }
                     className="w-full"
                   >
@@ -805,7 +1337,7 @@ export default function ApproverUsersPage() {
 
                   <p className="text-xs text-muted-foreground">
                     Assigning a department here is how an employee gets their
-                    department. Employees cannot set this themselves.
+                    department.
                   </p>
                 </div>
               </div>

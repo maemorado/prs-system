@@ -21,7 +21,7 @@ const sections: SidebarSection[] = [
   {
     label: "Administration",
     items: [
-      { name: "Users", href: "/approver/users", exact: true, icon: Users },
+      { name: "User Management", href: "/approver/users", exact: true, icon: Users },
       { name: "Departments", href: "/approver/departments", exact: true, icon: Building2 },
       { name: "Categories", href: "/approver/categories", exact: true, icon: Tags },
       { name: "History Logs", href: "/approver/logs", exact: true, icon: History },
