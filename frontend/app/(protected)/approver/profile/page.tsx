@@ -244,7 +244,7 @@ export default function ApproverProfilePage() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-3xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="Profile" />
         <CardSkeleton />
       </div>
@@ -253,7 +253,7 @@ export default function ApproverProfilePage() {
 
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-3xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="Profile" />
         <ErrorState
           message={error}
@@ -265,7 +265,7 @@ export default function ApproverProfilePage() {
 
   if (!profile) {
     return (
-      <div className="mx-auto w-full max-w-3xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="Profile" />
         <ErrorState
           message="Profile not found."
@@ -330,7 +330,7 @@ export default function ApproverProfilePage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <PageHeader
         title="Profile"
         description="Your personal account information and security settings."
@@ -414,7 +414,7 @@ export default function ApproverProfilePage() {
         </CardHeader>
 
         <CardContent className="border-t border-border pt-4">
-          <form onSubmit={handleSaveProfile} className="space-y-5">
+          <form onSubmit={handleSaveProfile} className="max-w-3xl space-y-5">
             {editSuccess && (
               <Alert>
                 <Check className="size-4" />
@@ -543,7 +543,7 @@ export default function ApproverProfilePage() {
         </CardHeader>
 
         <CardContent className="border-t border-border pt-4">
-          <form onSubmit={handlePasswordChange} className="space-y-5">
+          <form onSubmit={handlePasswordChange} className="max-w-xl space-y-5">
             {passwordSuccess && (
               <Alert>
                 <Check className="size-4" />

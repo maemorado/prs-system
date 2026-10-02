@@ -145,7 +145,7 @@ export default function RequestDetailsPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-4xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="Request Details" />
         <CardSkeleton />
       </div>
@@ -154,7 +154,7 @@ export default function RequestDetailsPage() {
 
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-4xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="Request Details" />
         <ErrorState message={error} onRetry={loadRequest} />
       </div>
@@ -163,7 +163,7 @@ export default function RequestDetailsPage() {
 
   if (!request) {
     return (
-      <div className="mx-auto w-full max-w-4xl">
+      <div className="mx-auto w-full max-w-[1600px]">
         <EmptyState
           icon={Inbox}
           title="Request not found"
@@ -183,7 +183,7 @@ export default function RequestDetailsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <div className="space-y-4">
         <Button
           variant="ghost"

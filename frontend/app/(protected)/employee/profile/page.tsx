@@ -1,6 +1,11 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import { createClient } from "@/src/lib/supabase/client";
 import { useProfile } from "@/src/components/shared/profile-provider";
 import {
@@ -14,17 +19,15 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
+  Building2,
   Check,
   Eye,
   EyeOff,
+  Info,
   KeyRound,
   Loader2,
   TriangleAlert,
@@ -98,7 +101,6 @@ export default function ProfilePage() {
 
   const [editFullName, setEditFullName] = useState("");
   const [editEmployeeId, setEditEmployeeId] = useState("");
-  const [editDepartmentId, setEditDepartmentId] = useState("");
 
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState("");
@@ -168,6 +170,13 @@ export default function ProfilePage() {
         return;
       }
 
+      console.log("[EMPLOYEE PROFILE] auth user id:", user.id);
+      console.log("[EMPLOYEE PROFILE] raw profile:", profileData);
+      console.log(
+        "[EMPLOYEE PROFILE] department_id:",
+        profileData.department_id
+      );
+
       // The dropdown options come from the same `departments` table, in the
       // same order, as the Approver profile dropdown.
       const { data: departmentsData, error: departmentsError } =
@@ -182,7 +191,7 @@ export default function ProfilePage() {
         console.error("Departments error:", departmentsError);
 
         setDepartmentsError(
-          "Unable to load the department list. You can keep your current department, or try again shortly."
+          "Could not load the department list, so the department name may be incomplete. This does not affect your other details."
         );
       } else {
         setDepartmentsError("");
@@ -197,6 +206,19 @@ export default function ProfilePage() {
           ) ?? null)
         : null;
 
+      const resolvedDepartment =
+        currentDepartment?.name ??
+        (profileData.department_id ? "Unknown department" : "Unassigned");
+
+      console.log(
+        "[EMPLOYEE PROFILE] resolved department object:",
+        currentDepartment
+      );
+      console.log(
+        "[EMPLOYEE PROFILE] resolved department:",
+        resolvedDepartment
+      );
+
       setDepartments(departmentOptions);
 
       setProfile({
@@ -210,7 +232,6 @@ export default function ProfilePage() {
 
       setEditFullName(profileData.full_name);
       setEditEmployeeId(profileData.employee_id ?? "");
-      setEditDepartmentId(profileData.department_id ?? "");
       setError("");
     } catch (err) {
       console.error("Profile load error:", err);
@@ -275,7 +296,7 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="My Profile" />
         <CardSkeleton />
       </div>
@@ -284,7 +305,7 @@ export default function ProfilePage() {
 
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="My Profile" />
         <ErrorState
           message={error}
@@ -296,7 +317,7 @@ export default function ProfilePage() {
 
   if (!profile) {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="My Profile" />
         <ErrorState
           message="Profile not found."
@@ -314,12 +335,12 @@ export default function ProfilePage() {
     .toUpperCase();
 
   // Resolve the department name from the profile's department relation first,
-  // then from the same department list used by the dropdown. Only fall back to
-  // "Unassigned" when the profile genuinely has no department.
+  // then from the same department list loaded from the database. Only fall back
+  // to "Not assigned" when the profile genuinely has no department.
   const departmentName =
     profile.department?.name ??
     departments.find((item) => item.id === profile.department_id)?.name ??
-    (profile.department_id ? "Unknown department" : "Unassigned");
+    (profile.department_id ? "Unknown department" : "Not assigned");
 
   const handleSaveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -337,7 +358,9 @@ export default function ProfilePage() {
     const { error: updateError } = await updateProfile({
       full_name: editFullName,
       employee_id: editEmployeeId,
-      department_id: editDepartmentId || null,
+      // `department_id` is intentionally omitted: employees do not assign
+      // themselves to a department. Omitting the key leaves the column out of
+      // the UPDATE, so it cannot be changed from this page at all.
     });
 
     if (updateError) {
@@ -358,13 +381,12 @@ export default function ProfilePage() {
   const handleCancelEdit = () => {
     setEditFullName(profile.full_name);
     setEditEmployeeId(profile.employee_id ?? "");
-    setEditDepartmentId(profile.department_id ?? "");
     setEditError("");
     setEditSuccess("");
   };
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <PageHeader
         title="My Profile"
         description="View and update your employee account information."
@@ -441,12 +463,13 @@ export default function ProfilePage() {
           </CardTitle>
 
           <CardDescription>
-            Update your personal information.
+            Update your personal information. Your role and department are
+            maintained by your approver and cannot be changed here.
           </CardDescription>
         </CardHeader>
 
         <CardContent className="border-t border-border pt-4">
-          <form onSubmit={handleSaveProfile} className="space-y-5">
+          <form onSubmit={handleSaveProfile} className="max-w-3xl space-y-5">
             {editSuccess && (
               <Alert>
                 <Check className="size-4" />
@@ -516,36 +539,36 @@ export default function ProfilePage() {
               </div>
 
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="edit-department">Department</Label>
+                <Label>Department</Label>
 
-                <NativeSelect
-                  id="edit-department"
-                  value={editDepartmentId}
-                  onChange={(event) =>
-                    setEditDepartmentId(event.target.value)
-                  }
-                  disabled={editSubmitting}
-                  className="w-full"
-                >
-                  <NativeSelectOption
-                    value=""
-                    className="bg-popover text-popover-foreground"
+                {/* Read-only by business rule: an approver assigns and changes
+                    an employee's department through User Management. */}
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-[5px] text-sm">
+                  <Building2
+                    className="size-4 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+
+                  <span
+                    className={
+                      departmentName === "Not assigned"
+                        ? "text-muted-foreground italic"
+                        : "font-medium break-words text-foreground"
+                    }
                   >
-                    Select department
-                  </NativeSelectOption>
+                    {departmentName}
+                  </span>
 
-                  {departments.map((item) => (
-                    <NativeSelectOption
-                      key={item.id}
-                      value={item.id}
-                      className="bg-popover text-popover-foreground"
-                    >
-                      {item.name}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
+                  <Badge
+                    variant="outline"
+                    className="ml-auto shrink-0 gap-1 font-normal"
+                  >
+                    <Info className="size-3" aria-hidden="true" />
+                    Managed by your approver
+                  </Badge>
+                </div>
 
-                {departmentsError ? (
+                {departmentsError && (
                   <p
                     role="alert"
                     className="flex items-start gap-1.5 text-xs font-medium text-destructive"
@@ -553,12 +576,7 @@ export default function ProfilePage() {
                     <TriangleAlert className="mt-px size-3 shrink-0" />
                     {departmentsError}
                   </p>
-                ) : departments.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No departments are available yet. Contact an administrator
-                    to assign one.
-                  </p>
-                ) : null}
+                )}
               </div>
             </div>
 
@@ -601,7 +619,7 @@ export default function ProfilePage() {
         </CardHeader>
 
         <CardContent className="border-t border-border pt-4">
-          <form onSubmit={handlePasswordChange} className="space-y-5">
+          <form onSubmit={handlePasswordChange} className="max-w-xl space-y-5">
             {passwordSuccess && (
               <Alert>
                 <Check className="size-4" />

@@ -196,7 +196,7 @@ export default function ApproverDashboardPage() {
    */
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-8">
+      <div className="mx-auto w-full max-w-[1600px] space-y-8">
         <PageHeader title="Approver Dashboard" />
         <ListSkeleton />
       </div>
@@ -208,7 +208,7 @@ export default function ApproverDashboardPage() {
    */
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-8">
+      <div className="mx-auto w-full max-w-[1600px] space-y-8">
         <PageHeader title="Approver Dashboard" />
 
         <ErrorState
@@ -225,7 +225,7 @@ export default function ApproverDashboardPage() {
    * Dashboard
    */
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-8">
+    <div className="mx-auto w-full max-w-[1600px] space-y-8">
       {/* Header */}
       <PageHeader
         title="Approver Dashboard"

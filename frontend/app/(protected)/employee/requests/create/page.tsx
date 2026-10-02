@@ -1,18 +1,20 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { Trash2 } from "lucide-react";
+import { ClipboardList, Package, Trash2 } from "lucide-react";
 import { PageHeader } from "@/src/components/shared/page-header";
-import { ErrorState } from "@/src/components/shared/state";
+import { EmptyState, ErrorState } from "@/src/components/shared/state";
 import { formatAmount } from "@/src/lib/format";
+import { getCategories } from "@/src/services/categoryService";
 import AddRequestItem from "@/src/components/employee/requests/AddRequestItem";
 
 type RequestItem = {
@@ -32,8 +34,42 @@ export default function CreateRequestPage() {
 
   const [items, setItems] = useState<RequestItem[]>([]);
 
+  // Category labels for the items list. The submitted payload only ever stores
+  // `category_id`, so this is purely for display.
+  const [categoryNames, setCategoryNames] = useState<Record<string, string>>(
+    {}
+  );
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCategoryNames() {
+      try {
+        const categories = await getCategories();
+
+        if (!cancelled) {
+          setCategoryNames(
+            Object.fromEntries(
+              categories.map((category) => [category.id, category.name])
+            )
+          );
+        }
+      } catch (err) {
+        // Display-only concern: if this fails the items still list correctly,
+        // they just fall back to showing the category id.
+        console.error("Category label lookup error:", err);
+      }
+    }
+
+    void loadCategoryNames();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const totalAmount = useMemo(() => {
     return items.reduce(
@@ -207,7 +243,7 @@ export default function CreateRequestPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <PageHeader
         title="Create Purchase Request"
         description="Fill in the request details and add the items you need."
@@ -224,69 +260,82 @@ export default function CreateRequestPage() {
         <Card>
           <CardHeader>
             <CardTitle>Request Information</CardTitle>
+
+            <CardDescription>
+              A short title and the reason for this request.
+            </CardDescription>
           </CardHeader>
 
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">Request Title</Label>
+          <CardContent className="space-y-5 border-t border-border pt-4">
+            <div className="grid gap-5 lg:grid-cols-12">
+              <div className="space-y-2 lg:col-span-8">
+                <Label htmlFor="title">
+                  Request Title
+                  <span className="text-destructive">*</span>
+                </Label>
 
-              <Input
-                id="title"
-                type="text"
-                value={title}
-                onChange={(event) =>
-                  setTitle(event.target.value)
-                }
-                placeholder="e.g. Computer Laboratory Equipment"
-                required
-                disabled={loading}
-              />
-            </div>
+                <Input
+                  id="title"
+                  type="text"
+                  value={title}
+                  onChange={(event) =>
+                    setTitle(event.target.value)
+                  }
+                  placeholder="e.g. Computer Laboratory Equipment"
+                  required
+                  disabled={loading}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="purpose">Purpose</Label>
+              <div className="space-y-2 lg:col-span-4">
+                <Label htmlFor="priority">Priority</Label>
 
-              <Textarea
-                id="purpose"
-                value={purpose}
-                onChange={(event) =>
-                  setPurpose(event.target.value)
-                }
-                placeholder="Explain the purpose of the request..."
-                required
-                disabled={loading}
-                rows={5}
-              />
-            </div>
+                <NativeSelect
+                  id="priority"
+                  value={priority}
+                  onChange={(event) =>
+                    setPriority(event.target.value)
+                  }
+                  disabled={loading}
+                  className="w-full"
+                >
+                  <option value="low">
+                    Low
+                  </option>
 
-            <div className="space-y-2">
-              <Label htmlFor="priority">Priority</Label>
+                  <option value="normal">
+                    Normal
+                  </option>
 
-              <NativeSelect
-                id="priority"
-                value={priority}
-                onChange={(event) =>
-                  setPriority(event.target.value)
-                }
-                disabled={loading}
-                className="w-full sm:max-w-xs"
-              >
-                <option value="low">
-                  Low
-                </option>
+                  <option value="high">
+                    High
+                  </option>
 
-                <option value="normal">
-                  Normal
-                </option>
+                  <option value="urgent">
+                    Urgent
+                  </option>
+                </NativeSelect>
+              </div>
 
-                <option value="high">
-                  High
-                </option>
+              <div className="space-y-2 lg:col-span-12">
+                <Label htmlFor="purpose">
+                  Purpose
+                  <span className="text-destructive">*</span>
+                </Label>
 
-                <option value="urgent">
-                  Urgent
-                </option>
-              </NativeSelect>
+                <Textarea
+                  id="purpose"
+                  value={purpose}
+                  onChange={(event) =>
+                    setPurpose(event.target.value)
+                  }
+                  placeholder="Explain the purpose of the request..."
+                  required
+                  disabled={loading}
+                  rows={4}
+                  className="resize-y"
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -295,24 +344,33 @@ export default function CreateRequestPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Items</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="size-4 text-muted-foreground" />
+              Items
+            </CardTitle>
+
+            <CardDescription>
+              Every item added above is listed here before you submit.
+            </CardDescription>
 
             {items.length > 0 && (
               <CardAction>
-                <span className="text-xs text-muted-foreground">
+                <Badge variant="secondary">
                   {items.length} item{items.length === 1 ? "" : "s"}
-                </span>
+                </Badge>
               </CardAction>
             )}
           </CardHeader>
 
-          <CardContent>
+          <CardContent className="border-t border-border pt-4">
             {items.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No items added yet. Add items using the form above.
-              </p>
+              <EmptyState
+                icon={ClipboardList}
+                title="No items yet"
+                description="Use the Request Item section above to describe and add the things you need."
+              />
             ) : (
-              <div className="space-y-3">
+              <ul className="space-y-2">
                 {items.map((item, index) => {
                   const itemTotal =
                     Number(item.quantity) *
@@ -320,23 +378,57 @@ export default function CreateRequestPage() {
                       item.estimated_unit_price
                     );
 
-                  return (
-                    <div
-                      key={index}
-                      className="space-y-2 border-b border-border pb-3 last:border-b-0 last:pb-0"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0 space-y-1">
-                          <p className="text-sm font-semibold text-foreground">
-                            {item.item_name}
-                          </p>
+                  const categoryLabel = item.category_id
+                    ? (categoryNames[item.category_id] ??
+                      "Unknown category")
+                    : "Uncategorised";
 
-                          {item.description && (
-                            <p className="text-sm text-muted-foreground">
-                              {item.description}
-                            </p>
-                          )}
+                  return (
+                    <li
+                      key={index}
+                      className="grid grid-cols-[auto_1fr_auto] items-start gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:gap-4 sm:p-4"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="flex size-6 shrink-0 items-center justify-center rounded-md bg-background text-xs font-semibold text-muted-foreground tabular-nums ring-1 ring-border"
+                      >
+                        {index + 1}
+                      </span>
+
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-sm font-semibold break-words text-foreground">
+                          {item.item_name}
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <Badge
+                            variant="outline"
+                            className="font-normal"
+                          >
+                            {categoryLabel}
+                          </Badge>
+
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {item.quantity} ×{" "}
+                            {formatAmount(
+                              Number(
+                                item.estimated_unit_price
+                              )
+                            )}
+                          </span>
                         </div>
+
+                        {item.description && (
+                          <p className="text-xs break-words text-muted-foreground">
+                            {item.description}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <span className="text-sm font-semibold text-foreground tabular-nums">
+                          {formatAmount(itemTotal)}
+                        </span>
 
                         <Button
                           type="button"
@@ -347,52 +439,36 @@ export default function CreateRequestPage() {
                           }
                           disabled={loading}
                           aria-label={`Remove ${item.item_name}`}
+                          title={`Remove ${item.item_name}`}
                         >
                           <Trash2 className="size-4" />
                         </Button>
                       </div>
-
-                      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-                        <span className="text-muted-foreground">
-                          Quantity:{" "}
-                          <span className="font-medium text-foreground">
-                            {item.quantity}
-                          </span>
-                        </span>
-
-                        <span className="text-muted-foreground">
-                          Unit Price:{" "}
-                          <span className="font-medium text-foreground tabular-nums">
-                            {formatAmount(
-                              Number(
-                                item.estimated_unit_price
-                              )
-                            )}
-                          </span>
-                        </span>
-
-                        <span className="text-muted-foreground">
-                          Subtotal:{" "}
-                          <span className="font-medium text-foreground tabular-nums">
-                            {formatAmount(itemTotal)}
-                          </span>
-                        </span>
-                      </div>
-                    </div>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             )}
           </CardContent>
         </Card>
 
         <Card className="bg-muted/40">
-          <CardContent className="flex items-center justify-between py-4">
-            <h2 className="text-sm font-medium text-muted-foreground">
-              Total
-            </h2>
+          <CardContent className="flex flex-col gap-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-0.5">
+              <h2 className="text-sm font-medium text-foreground">
+                Request Total
+              </h2>
 
-            <p className="text-xl font-bold text-foreground tabular-nums">
+              <p className="text-xs text-muted-foreground">
+                {items.length === 0
+                  ? "No items added yet"
+                  : `Sum of ${items.length} item${
+                      items.length === 1 ? "" : "s"
+                    }`}
+              </p>
+            </div>
+
+            <p className="text-2xl font-bold text-foreground tabular-nums sm:text-3xl">
               {formatAmount(totalAmount)}
             </p>
           </CardContent>

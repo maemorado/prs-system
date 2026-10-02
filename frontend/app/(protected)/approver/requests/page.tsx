@@ -71,7 +71,7 @@ export default function AdminRequestsPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="Purchase Requests" />
         <ListSkeleton />
       </div>
@@ -79,7 +79,7 @@ export default function AdminRequestsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <PageHeader
         title="Purchase Requests"
         description="View and manage all purchase requests."

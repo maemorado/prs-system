@@ -90,7 +90,7 @@ export default function RequestsPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-5xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="My Requests" />
         <ListSkeleton />
       </div>
@@ -99,7 +99,7 @@ export default function RequestsPage() {
 
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-5xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="My Requests" />
         <ErrorState message={error} onRetry={loadRequests} />
       </div>
@@ -107,7 +107,7 @@ export default function RequestsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <PageHeader
         title="My Requests"
         description="View and track your purchase requests."

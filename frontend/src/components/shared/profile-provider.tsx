@@ -35,11 +35,17 @@ export type Profile = {
  * is privileged data and must never be writable from a normal profile form. The
  * allowlist below is enforced again in `updateProfile`, so a caller cannot smuggle
  * extra columns into the update payload.
+ *
+ * `department_id` is **optional on purpose**. Business rule: employees do not
+ * assign themselves to a department; an approver manages that. Omitting the key
+ * leaves the column out of the UPDATE entirely, so a self-service form cannot
+ * change it even if it were wired to a control. A caller that does pass the key
+ * (the approver's own profile page) keeps the previous behaviour.
  */
 export type EditableProfileFields = {
   full_name: string;
   employee_id: string | null;
-  department_id: string | null;
+  department_id?: string | null;
 };
 
 export const EDITABLE_PROFILE_FIELDS = [
@@ -279,8 +285,14 @@ export function ProfileProvider({
       const payload: EditableProfileFields = {
         full_name: fullName,
         employee_id: fields.employee_id?.trim() || null,
-        department_id: fields.department_id || null,
       };
+
+      // Only sent when the caller actually supplied it. Omitting the key means
+      // PostgREST leaves `department_id` untouched, which is what stops a
+      // self-service profile form from reassigning the user's department.
+      if (fields.department_id !== undefined) {
+        payload.department_id = fields.department_id || null;
+      }
 
       // Scoped to the authenticated user's own id, so the client can only ever
       // write to its own row. Row Level Security is still the real authority;

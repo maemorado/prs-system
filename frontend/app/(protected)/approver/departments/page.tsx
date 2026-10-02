@@ -160,7 +160,7 @@ export default function AdminDepartmentsPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-4xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="Departments" />
         <ListSkeleton />
       </div>
@@ -168,7 +168,7 @@ export default function AdminDepartmentsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       {/* Header */}
       <PageHeader
         title="Departments"
@@ -207,7 +207,7 @@ export default function AdminDepartmentsPage() {
         <CardContent>
           <form
             onSubmit={handleAddDepartment}
-            className="flex flex-col gap-3 sm:flex-row sm:items-end"
+            className="flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end"
           >
             <div className="w-full space-y-2">
               <Label htmlFor="department-name">

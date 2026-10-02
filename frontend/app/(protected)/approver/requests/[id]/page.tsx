@@ -611,7 +611,7 @@ export default function ApproverRequestDetailsPage() {
   // ==========================================
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-5xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <Button
           variant="ghost"
           size="sm"
@@ -632,7 +632,7 @@ export default function ApproverRequestDetailsPage() {
   // ==========================================
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-5xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <Button
           variant="ghost"
           size="sm"
@@ -654,7 +654,7 @@ export default function ApproverRequestDetailsPage() {
   // ==========================================
   if (!request) {
     return (
-      <div className="mx-auto w-full max-w-5xl">
+      <div className="mx-auto w-full max-w-[1600px]">
         <EmptyState
           icon={Inbox}
           title="Request Not Found"
@@ -677,7 +677,7 @@ export default function ApproverRequestDetailsPage() {
   // PAGE
   // ==========================================
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       {/* Back */}
       <div className="space-y-4">
         <Button

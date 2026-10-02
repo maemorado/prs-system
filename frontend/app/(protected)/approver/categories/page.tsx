@@ -170,7 +170,7 @@ export default function AdminCategoriesPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-4xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="Categories" />
         <ListSkeleton />
       </div>
@@ -178,7 +178,7 @@ export default function AdminCategoriesPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       {/* Header */}
       <PageHeader
         title="Categories"
@@ -217,7 +217,7 @@ export default function AdminCategoriesPage() {
         <CardContent>
           <form
             onSubmit={handleAddCategory}
-            className="space-y-4"
+            className="max-w-xl space-y-4"
           >
             <div className="space-y-2">
               <Label htmlFor="category-name">

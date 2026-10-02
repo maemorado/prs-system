@@ -191,7 +191,7 @@ export default function AdminLogsPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="History Logs" />
         <ListSkeleton />
       </div>
@@ -199,7 +199,7 @@ export default function AdminLogsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-8">
+    <div className="mx-auto w-full max-w-[1600px] space-y-8">
       {/* Header */}
       <PageHeader
         title="History Logs"

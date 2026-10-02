@@ -145,7 +145,7 @@ export default function DashboardPage() {
   // ==========================================
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-8">
+      <div className="mx-auto w-full max-w-[1600px] space-y-8">
         <ListSkeleton />
       </div>
     );
@@ -156,7 +156,7 @@ export default function DashboardPage() {
   // ==========================================
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-6xl">
+      <div className="mx-auto w-full max-w-[1600px]">
         <PageHeader title="Dashboard" />
 
         <div className="mt-6">
@@ -198,7 +198,7 @@ export default function DashboardPage() {
   // PAGE
   // ==========================================
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-8">
+    <div className="mx-auto w-full max-w-[1600px] space-y-8">
       {/* ========================================
           WELCOME
       ======================================== */}
