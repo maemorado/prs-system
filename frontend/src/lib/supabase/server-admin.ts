@@ -167,8 +167,11 @@ function createAdminClient() {
  * creation, so the person can sign in straight away and never enters an email
  * confirmation flow.
  *
- * On failure after the sign-in exists, the sign-in is rolled back rather than
- * left orphaned, so a retry with the same address can succeed.
+ * On failure after the sign-in exists, *both* rows it left behind are removed —
+ * the sign-in and the profile row the database trigger created for it — so the
+ * request either fully succeeds or fully leaves no trace. A partial result was
+ * the worse outcome: an account appeared in User Management that no one could
+ * sign in to, and every retry added another one.
  */
 export async function createAccountWithProfile(input: {
   fullName: string;
@@ -189,7 +192,7 @@ export async function createAccountWithProfile(input: {
   });
 
   if (createError || !created?.user) {
-    console.error("[create-account] auth admin createUser failed:", createError);
+    logAuthCreateFailure(createError);
 
     throw new AccountCreationError(
       mapAuthError(createError?.message ?? ""),
@@ -200,39 +203,220 @@ export async function createAccountWithProfile(input: {
 
   const userId = created.user.id;
 
-  const { error: profileError } = await admin.from("profiles").insert({
-    id: userId,
+  // The database has a trigger that creates the `profiles` row as soon as the
+  // sign-in exists, so the row is normally already present here. An insert
+  // would therefore always fail on the primary key, and the rollback below
+  // would then delete the sign-in that was working perfectly.
+  //
+  // So: update the existing row, and insert only if the trigger somehow did not
+  // run. This is also why the role must be written explicitly — the trigger
+  // ignores the role in `user_metadata` and applies its own default, so an
+  // approver created this way would otherwise end up as an employee.
+  const details = {
     full_name: input.fullName,
     employee_id: input.employeeId,
     role: input.role,
     department_id: input.departmentId,
-  });
+  };
 
-  if (profileError) {
-    console.error("[create-account] profile insert failed:", profileError);
+  const { data: updatedRows, error: updateError } = await admin
+    .from("profiles")
+    .update(details)
+    .eq("id", userId)
+    .select("id");
 
-    // The sign-in works but has no profile, which would leave an account that
-    // can sign in and then break. Remove it so the state stays consistent.
-    const { error: cleanupError } = await admin.auth.admin.deleteUser(userId);
+  if (updateError) {
+    await failProfileWrite(admin, userId, "update", updateError);
+  }
 
-    if (cleanupError) {
-      console.error("[create-account] rollback failed:", cleanupError);
+  // No row was updated, so the trigger did not create one. Create it now.
+  if (!updatedRows || updatedRows.length === 0) {
+    const { error: insertError } = await admin
+      .from("profiles")
+      .insert({ id: userId, ...details });
 
-      throw new AccountCreationError(
-        "The sign-in was created but its profile could not be saved, and the automatic cleanup failed. Please contact an administrator.",
-        500,
-        "rollback_failed",
-      );
+    if (insertError) {
+      await failProfileWrite(admin, userId, "insert", insertError);
     }
-
-    throw new AccountCreationError(
-      "The account could not be created. Nothing was saved — please try again.",
-      500,
-      "profile_create_failed",
-    );
   }
 
   return { id: userId, email: input.email };
+}
+
+/**
+ * Handles a profile write that failed *after* the sign-in already exists.
+ *
+ * Two things have to be true here, and both were wrong before:
+ *
+ * 1. The write is undone completely. Removing the sign-in is not enough: the
+ *    database trigger has already created a profile row for it, and nothing
+ *    links that row to a sign-in once the sign-in is gone. Leaving it behind
+ *    put an account in the User Management list that nobody could ever sign in
+ *    to, and a retry with the same email added a second one. Because the id
+ *    was minted seconds ago by this request, that row cannot be anything the
+ *    caller cared about keeping.
+ *
+ * 2. The reason is reported accurately. "Nothing was saved" was simply false
+ *    while a row survived, and the generic wording hid the one cause an
+ *    approver can actually fix: an employee ID that is already assigned.
+ */
+async function failProfileWrite(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+  stage: "update" | "insert",
+  error: unknown
+): Promise<never> {
+  const record = asRecord(error);
+
+  // Server-side only, and the raw message names a constraint and a table, so
+  // it is logged rather than returned. The browser gets `mapped` below.
+  console.error(
+    `[create-account] profile ${stage} failed:`,
+    JSON.stringify({
+      code: pickString(record["code"]),
+      message: pickString(record["message"]),
+      details: pickString(record["details"]),
+    })
+  );
+
+  const mapped = mapProfileWriteError(record);
+
+  // The trigger's row goes first. Without its sign-in it is unusable, and
+  // leaving it is exactly what made a failed attempt look like a success.
+  const { error: profileCleanupError } = await admin
+    .from("profiles")
+    .delete()
+    .eq("id", userId);
+
+  const { error: authCleanupError } = await admin.auth.admin.deleteUser(userId);
+
+  if (profileCleanupError || authCleanupError) {
+    console.error(
+      "[create-account] cleanup after a failed profile write did not fully succeed:",
+      JSON.stringify({
+        profile: pickString(asRecord(profileCleanupError)["code"]),
+        auth: pickString(asRecord(authCleanupError)["code"]),
+      })
+    );
+
+    throw new AccountCreationError(
+      "The account could not be created, and the automatic cleanup did not finish. Please contact an administrator.",
+      500,
+      "cleanup_failed",
+    );
+  }
+
+  throw new AccountCreationError(mapped.message, mapped.status, mapped.code);
+}
+
+/**
+ * Turns a profile write failure into ordinary language.
+ *
+ * Only PostgREST's SQLSTATE is branched on. The constraint name inside the raw
+ * message is used to pick between two of *our own* messages and is never shown.
+ */
+function mapProfileWriteError(error: Record<string, unknown>): {
+  message: string;
+  status: number;
+  code: string;
+} {
+  const sqlState = typeof error["code"] === "string" ? error["code"] : "";
+
+  const text = `${String(error["message"] ?? "")} ${
+    String(error["details"] ?? "")
+  }`.toLowerCase();
+
+  // 23505 = unique_violation.
+  if (sqlState === "23505") {
+    if (text.includes("employee_id")) {
+      return {
+        message:
+          "That employee ID is already assigned to another account. Please use a different one.",
+        status: 409,
+        code: "employee_id_taken",
+      };
+    }
+
+    return {
+      message: "Those details are already used by another account.",
+      status: 409,
+      code: "duplicate_details",
+    };
+  }
+
+  // 23503 = foreign_key_violation, which here can only be the department.
+  if (sqlState === "23503") {
+    return {
+      message: "Select a valid department.",
+      status: 400,
+      code: "invalid_department",
+    };
+  }
+
+  return {
+    message: "The account could not be created. Nothing was saved — please try again.",
+    status: 500,
+    code: "profile_create_failed",
+  };
+}
+
+/**
+ * Writes the auth server's own diagnostic detail to the server log.
+ *
+ * Server-side only. The client still receives only the generic message from
+ * `mapAuthError`, so this narrows nothing on the browser side.
+ *
+ * Only non-secret fields are read: the auth error never carries the key, the
+ * password, or any token. `message`, `name`, `status`, `code` and `hint` are
+ * the auth server's own diagnostic strings. Anything is escaped to newlines so
+ * a multi-line value cannot forge extra log lines, and the values are truncated
+ * to keep the log readable.
+ */
+function logAuthCreateFailure(error: unknown): void {
+  // No error object at all: the call returned neither a user nor a reason.
+  if (!error || typeof error !== "object") {
+    console.error(
+      "[create-account] auth admin createUser returned no user and no error"
+    );
+
+    return;
+  }
+
+  const record = asRecord(error);
+
+  console.error(
+    "[create-account] auth admin createUser failed:",
+    JSON.stringify({
+      name: pickString(record["name"]),
+      message: pickString(record["message"]),
+      status: pickNumber(record["status"]),
+      code: pickString(record["code"]),
+      hint: pickString(record["hint"]),
+    })
+  );
+}
+
+/**
+ * Reads a field off a Supabase error object.
+ *
+ * Supabase's error types are declared as interfaces with no index signature, so
+ * reading a possibly-absent field needs the `unknown` hop.
+ */
+function asRecord(value: unknown): Record<string, unknown> {
+  return (value ?? {}) as Record<string, unknown>;
+}
+
+function pickString(value: unknown): string {
+  if (typeof value !== "string" || value.length === 0) {
+    return "";
+  }
+
+  // Collapse newlines and cap the length so the log stays one clean entry.
+  return value.replace(/\r?\n/g, " ").slice(0, 300);
+}
+
+function pickNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 /**
