@@ -12,20 +12,39 @@ import { cookies } from "next/headers";
  * into the browser bundle.
  */
 
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+/**
+ * The environment variables this server needs, by name.
+ *
+ * `SUPABASE_SERVICE_ROLE_KEY` is the one privileged value, and it is
+ * deliberately NOT a `NEXT_PUBLIC_*` variable: Next.js inlines anything with
+ * that prefix into the browser bundle, so a privileged key must never use it.
+ * The other two are public by design and are read by the browser as well.
+ *
+ * All three have to be present in every environment the app is deployed to,
+ * including Vercel's Production environment. A missing service-role key is the
+ * reason account creation works on localhost and fails on a fresh deployment:
+ * localhost reads `.env.local`, a Vercel function reads whatever the project
+ * has configured for it.
+ */
+export const ENV_SUPABASE_URL = "NEXT_PUBLIC_SUPABASE_URL";
+export const ENV_SUPABASE_PUBLISHABLE_KEY =
+  "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY";
+export const ENV_SUPABASE_SERVICE_ROLE_KEY = "SUPABASE_SERVICE_ROLE_KEY";
 
 /**
- * The service-role key, read only on the server.
- *
- * It is deliberately NOT a `NEXT_PUBLIC_*` variable: Next.js inlines anything
- * with that prefix into the client bundle, so a privileged key must never use
- * it. This module is server-only and `server-only` is enforced at build time.
+ * The copy the browser is allowed to see for any failure whose cause is
+ * internal to the server. Supabase and PostgREST messages can name endpoints,
+ * tables, columns, constraints and SQL, so those details are logged and only
+ * this string crosses back to the client.
  */
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const GENERIC_FAILURE_MESSAGE =
+  "Unable to create the account. Please try again.";
 
 /** Roles permitted to create accounts. These already exist in `profiles.role`. */
 const ACCOUNT_CREATOR_ROLES = new Set(["approver", "admin"]);
+
+/** Truncation limit for anything written to the server log. */
+const LOG_VALUE_LIMIT = 300;
 
 export class AccountCreationError extends Error {
   constructor(
@@ -38,14 +57,107 @@ export class AccountCreationError extends Error {
   }
 }
 
+type ServerEnv = {
+  url: string;
+  publishableKey: string;
+  serviceRoleKey: string;
+};
+
 /**
- * Whether the server has been given a key that can create accounts.
+ * Reads one environment variable at request time.
  *
- * Checked before any work starts so the UI can explain a missing setup instead
- * of failing partway through with a confusing auth error.
+ * The name is passed in as a value instead of written out as
+ * `process.env.SUPABASE_SERVICE_ROLE_KEY` at each call site. That is
+ * deliberate: a literal property access on `process.env` can be substituted at
+ * build time, which freezes whatever value the *build* environment happened to
+ * hold. On Vercel that means a key added or rotated in the project dashboard
+ * can keep arriving as `undefined` until the next build, and the endpoint then
+ * refuses to run. Going through a variable keeps this a genuine runtime read of
+ * the function's own environment, so the value is correct on the first request
+ * after it is configured.
+ *
+ * The value never leaves the server: callers get booleans and error objects,
+ * never the key itself.
+ */
+function readEnv(name: string): string {
+  const value = process.env[name];
+
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function loadEnv(): ServerEnv {
+  return {
+    url: readEnv(ENV_SUPABASE_URL),
+    publishableKey: readEnv(ENV_SUPABASE_PUBLISHABLE_KEY),
+    serviceRoleKey: readEnv(ENV_SUPABASE_SERVICE_ROLE_KEY),
+  };
+}
+
+/**
+ * Which of the required variables are absent right now.
+ *
+ * Names only — never values — because this is written to the function log so
+ * whoever deploys can see exactly what to add in Vercel.
+ */
+export function missingEnvVars(): string[] {
+  const env = loadEnv();
+  const missing: string[] = [];
+
+  if (!env.url) {
+    missing.push(ENV_SUPABASE_URL);
+  }
+
+  if (!env.publishableKey) {
+    missing.push(ENV_SUPABASE_PUBLISHABLE_KEY);
+  }
+
+  if (!env.serviceRoleKey) {
+    missing.push(ENV_SUPABASE_SERVICE_ROLE_KEY);
+  }
+
+  return missing;
+}
+
+/**
+ * Whether the server has been given everything it needs to create accounts.
+ *
+ * Checked before any work starts, so a missing setup produces one clear log
+ * entry instead of a confusing auth error partway through.
  */
 export function isAccountCreationConfigured(): boolean {
-  return Boolean(URL && SERVICE_ROLE_KEY);
+  const env = loadEnv();
+
+  return Boolean(env.url && env.serviceRoleKey);
+}
+
+/**
+ * Writes the missing variable names to the server log, once per process.
+ *
+ * This is the only practical way to diagnose a deployment that has not been
+ * given the key: the browser never learns the variable name, only that the
+ * attempt failed. Called from the endpoint the first time it refuses to run.
+ */
+let hasReportedMissingEnvVars = false;
+
+export function reportMissingEnvVarsOnce(): void {
+  if (hasReportedMissingEnvVars) {
+    return;
+  }
+
+  const missing = missingEnvVars();
+
+  if (missing.length === 0) {
+    return;
+  }
+
+  hasReportedMissingEnvVars = true;
+
+  console.error(
+    "[create-account] account creation is unavailable on this deployment. Missing environment variable(s):",
+    missing.join(", "),
+    `| node=${process.env.NODE_ENV ?? "unknown"}`,
+    "| set them in the deployment platform (Vercel: Project Settings -> Environment Variables, for every environment)."
+  );
 }
 
 /**
@@ -55,17 +167,21 @@ export function isAccountCreationConfigured(): boolean {
  * the auth server, so a doctored cookie cannot pass as an approver.
  */
 async function createSessionClient() {
-  if (!URL || !PUBLISHABLE_KEY) {
+  const env = loadEnv();
+
+  if (!env.url || !env.publishableKey) {
+    reportMissingEnvVarsOnce();
+
     throw new AccountCreationError(
-      "The server is not configured to create accounts.",
+      GENERIC_FAILURE_MESSAGE,
       500,
-      "server_misconfigured",
+      "server_misconfigured"
     );
   }
 
   const cookieStore = await cookies();
 
-  return createServerClient(URL, PUBLISHABLE_KEY, {
+  return createServerClient(env.url, env.publishableKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -119,9 +235,9 @@ export async function assertApproverRequest(): Promise<string> {
     console.error("[create-account] profile lookup failed:", profileError);
 
     throw new AccountCreationError(
-      "Unable to verify your access. Please try again.",
+      GENERIC_FAILURE_MESSAGE,
       500,
-      "profile_lookup_failed",
+      "profile_lookup_failed"
     );
   }
 
@@ -143,7 +259,11 @@ export async function assertApproverRequest(): Promise<string> {
  * only ever runs on the server.
  */
 function createAdminClient() {
-  if (!URL || !SERVICE_ROLE_KEY) {
+  const env = loadEnv();
+
+  if (!env.url || !env.serviceRoleKey) {
+    reportMissingEnvVarsOnce();
+
     throw new AccountCreationError(
       "Account creation is not available on this server.",
       503,
@@ -151,7 +271,7 @@ function createAdminClient() {
     );
   }
 
-  return createClient(URL, SERVICE_ROLE_KEY, {
+  return createClient(env.url, env.serviceRoleKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -354,7 +474,7 @@ function mapProfileWriteError(error: Record<string, unknown>): {
   }
 
   return {
-    message: "The account could not be created. Nothing was saved — please try again.",
+    message: GENERIC_FAILURE_MESSAGE,
     status: 500,
     code: "profile_create_failed",
   };
@@ -371,6 +491,10 @@ function mapProfileWriteError(error: Record<string, unknown>): {
  * the auth server's own diagnostic strings. Anything is escaped to newlines so
  * a multi-line value cannot forge extra log lines, and the values are truncated
  * to keep the log readable.
+ *
+ * The status and code also make a misconfigured key obvious: a key that is
+ * valid but not privileged comes back here as 401/403 rather than a constraint
+ * error.
  */
 function logAuthCreateFailure(error: unknown): void {
   // No error object at all: the call returned neither a user nor a reason.
@@ -412,7 +536,7 @@ function pickString(value: unknown): string {
   }
 
   // Collapse newlines and cap the length so the log stays one clean entry.
-  return value.replace(/\r?\n/g, " ").slice(0, 300);
+  return value.replace(/\r?\n/g, " ").slice(0, LOG_VALUE_LIMIT);
 }
 
 function pickNumber(value: unknown): number | null {
@@ -423,7 +547,8 @@ function pickNumber(value: unknown): number | null {
  * Turns auth-server errors into ordinary language.
  *
  * Raw messages can name endpoints, tables and SQL, so they are logged rather
- * than shown.
+ * than shown. Anything unrecognised — including a key that turned out not to
+ * be privileged — falls through to the generic message.
  */
 function mapAuthError(raw: string): string {
   const message = raw.toLowerCase();
@@ -451,5 +576,39 @@ function mapAuthError(raw: string): string {
     return "Too many attempts. Please wait a moment and try again.";
   }
 
-  return "The account could not be created. Please try again.";
+  return GENERIC_FAILURE_MESSAGE;
+}
+
+/**
+ * The copy and status the endpoint is allowed to return for a given failure.
+ *
+ * Only the codes below are safe to hand to the browser. Anything else is an
+ * internal fault whose real cause is already in the server log, so the client
+ * gets the same generic sentence it would get from an unexpected error.
+ */
+const CLIENT_SAFE_CODES = new Set([
+  "unauthenticated",
+  "forbidden",
+  "not_configured",
+  "cleanup_failed",
+  "auth_create_failed",
+  "employee_id_taken",
+  "duplicate_details",
+  "invalid_department",
+]);
+
+export function toClientError(error: AccountCreationError): {
+  error: string;
+  code: string;
+  status: number;
+} {
+  if (CLIENT_SAFE_CODES.has(error.code)) {
+    return { error: error.message, code: error.code, status: error.status };
+  }
+
+  console.error(
+    `[create-account] hiding internal failure "${error.code}" from the client`
+  );
+
+  return { error: GENERIC_FAILURE_MESSAGE, code: "unexpected", status: 500 };
 }

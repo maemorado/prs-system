@@ -1,9 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import Link from "next/link";
 import { createClient } from "@/src/lib/supabase/client";
 import { useProfile } from "@/src/components/shared/profile-provider";
+import { usePagination } from "@/hooks/use-pagination";
+import { cn } from "cn";
+import { rangeFrom, rangeTo } from "@/src/lib/pagination";
+import { countProfiles } from "@/src/lib/queries";
 import { friendlyError } from "@/src/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +71,7 @@ import {
   X,
 } from "lucide-react";
 import { PageHeader } from "@/src/components/shared/page-header";
+import { DataPagination } from "@/src/components/shared/data-pagination";
 import {
   EmptyState,
   ErrorState,
@@ -83,6 +94,10 @@ type Department = {
   id: string;
   name: string;
 };
+
+/** Sentinel for the department filter, since a real id can never be this. */
+const ALL_DEPARTMENTS = "all";
+const UNASSIGNED_DEPARTMENT = "unassigned";
 
 const PROFILE_COLUMNS = `
   id,
@@ -109,14 +124,31 @@ function initialsOf(name: string) {
 }
 
 /**
- * Roles are read from the rows already loaded rather than hardcoded, so a role
- * added to the database is offered automatically and no invented role can be
- * selected.
+ * Turns what was typed into a PostgREST `ilike` pattern.
+ *
+ * `%` and `_` stay as the wildcards they are — that is what makes "emp" match
+ * "EMP-0001" — but a comma has to become `*`. PostgREST uses the comma to
+ * separate the alternatives inside an `or=(...)` filter, and a literal comma in
+ * one of the values is written as `*`; without that, searching for
+ * "Dela Cruz, Juan" would produce a filter the server rejects instead of
+ * results.
  */
-function roleOptionsFrom(users: UserProfile[]) {
+function likePattern(term: string) {
+  return `%${term.replace(/,/g, "*")}%`;
+}
+
+/**
+ * Roles are read from the database rather than hardcoded, so a role added to
+ * `profiles` is offered automatically and no invented role can be selected.
+ *
+ * Only the `role` column is fetched, and a bounded number of rows, because this
+ * drives a dropdown — it must not depend on which accounts happen to be on the
+ * page being displayed.
+ */
+function roleOptionsFrom(rows: Pick<UserProfile, "role">[]) {
   const roles = new Set<string>();
 
-  for (const user of users) {
+  for (const user of rows) {
     roles.add(user.role);
   }
 
@@ -135,6 +167,15 @@ function getRoleBadgeVariant(role: string) {
       return "default" as const;
   }
 }
+
+/**
+ * The generic copy shown for any failure whose cause is server-side.
+ *
+ * The endpoint returns actionable wording when it can — a duplicate employee ID,
+ * an email that is already registered — and this for everything else. Anything
+ * it cannot show safely stays in the server log.
+ */
+const GENERIC_CREATE_ERROR = "Unable to create the account. Please try again.";
 
 function RevealPasswordToggle({
   visible,
@@ -164,14 +205,43 @@ function RevealPasswordToggle({
 export default function ApproverUsersPage() {
   const { profile: currentProfile } = useProfile();
 
+  // ---------------------------------------------------------------------
+  // The page of accounts, loaded from the database
+  // ---------------------------------------------------------------------
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
+  const [total, setTotal] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
-  const [search, setSearch] = useState("");
+  /** Whole-directory counts for the summary cards, independent of the filters. */
+  const [counts, setCounts] = useState({
+    total: 0,
+    approvers: 0,
+    unassigned: 0,
+  });
+
+  // ---------------------------------------------------------------------
+  // Filters
+  // ---------------------------------------------------------------------
+  /** What is in the search box, updated on every keystroke. */
+  const [searchInput, setSearchInput] = useState("");
+  /**
+   * What the query uses. Deferred so typing stays responsive: React renders
+   * this at a lower priority, so the fetch runs once the keystrokes settle
+   * instead of once per character.
+   */
+  const search = useDeferredValue(searchInput);
+
   const [roleFilter, setRoleFilter] = useState("all");
+  const [departmentFilter, setDepartmentFilter] = useState(ALL_DEPARTMENTS);
+
+  const [roleOptions, setRoleOptions] = useState<string[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+
+  const { page, pageSize, totalPages, goToPage, resetToFirstPage } =
+    usePagination(total);
 
   /** Banner shown after an account is created. */
   const [createdNotice, setCreatedNotice] = useState<{
@@ -206,65 +276,137 @@ export default function ApproverUsersPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
 
-  const loadUsers = useCallback(async () => {
-    // Note: every `setState` below sits after an `await`. Setting state
-    // synchronously here would make the mount effect cascade a second render
-    // before the request even starts.
+  /**
+   * Departments, the selectable roles and the directory-wide counts.
+   *
+   * Loaded once rather than per page: they are reference data for the filters
+   * and the summary cards, and the counts are `head` requests, so they cost a
+   * round trip each without moving a single row.
+   */
+  const loadLookups = useCallback(async () => {
     try {
       const supabase = createClient();
 
-      const [usersResult, departmentsResult] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select(PROFILE_COLUMNS)
-          .order("full_name", { ascending: true }),
+      const [departmentsResult, rolesResult, total, approvers, unassigned] =
+        await Promise.all([
+          supabase
+            .from("departments")
+            .select("id, name")
+            .order("name", { ascending: true }),
 
-        supabase
-          .from("departments")
-          .select("id, name")
-          .order("name", { ascending: true }),
-      ]);
+          supabase.from("profiles").select("role").limit(500),
 
-      if (usersResult.error) {
-        console.error("Users error:", usersResult.error);
-
-        setError(usersResult.error.message);
-        return;
-      }
+          countProfiles(supabase),
+          countProfiles(supabase, "approver"),
+          countProfiles(supabase, "unassigned"),
+        ]);
 
       if (departmentsResult.error) {
-        console.error("Departments error:", departmentsResult.error);
+        throw departmentsResult.error;
+      }
 
-        setError(departmentsResult.error.message);
+      setDepartments(departmentsResult.data ?? []);
+      setRoleOptions(roleOptionsFrom(rolesResult.data ?? []));
+      setCounts({ total, approvers, unassigned });
+    } catch (err) {
+      console.error("User management lookups error:", err);
+
+      setError(
+        err instanceof Error
+          ? friendlyError(err, "Failed to load accounts.")
+          : "Failed to load accounts."
+      );
+    }
+  }, []);
+
+  /**
+   * One page of accounts, filtered and counted by the database.
+   *
+   * The window is applied by the server (`range`), so the number of rows that
+   * crosses the wire is the page size no matter how many accounts exist, and
+   * `count: "exact"` is what makes "showing 11–20 of 87" possible.
+   */
+  const loadUsers = useCallback(async () => {
+    try {
+      const supabase = createClient();
+
+      const term = search.trim();
+
+      let query = supabase
+        .from("profiles")
+        .select(PROFILE_COLUMNS, { count: "exact" })
+        .order("full_name", { ascending: true });
+
+      if (term) {
+        const pattern = likePattern(term);
+
+        // One request, two searchable columns: a name *or* an employee ID.
+        query = query.or(
+          `full_name.ilike.${pattern},employee_id.ilike.${pattern}`
+        );
+      }
+
+      if (roleFilter !== "all") {
+        query = query.eq("role", roleFilter);
+      }
+
+      if (departmentFilter === UNASSIGNED_DEPARTMENT) {
+        query = query.is("department_id", null);
+      } else if (departmentFilter !== ALL_DEPARTMENTS) {
+        query = query.eq("department_id", departmentFilter);
+      }
+
+      const { data, error: usersError, count } = await query.range(
+        rangeFrom(page, pageSize),
+        rangeTo(page, pageSize)
+      );
+
+      if (usersError) {
+        console.error("Users error:", usersError);
+
+        setError(
+          friendlyError(usersError, "Failed to load accounts.")
+        );
+
         return;
       }
 
-      setUsers(usersResult.data ?? []);
-      setDepartments(departmentsResult.data ?? []);
+      setUsers(data ?? []);
+      setTotal(count ?? null);
       setError("");
     } catch (err) {
       console.error("User management load error:", err);
 
       setError(
-        err instanceof Error ? err.message : "Failed to load users."
+        err instanceof Error ? err.message : "Failed to load accounts."
       );
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, []);
+  }, [page, pageSize, search, roleFilter, departmentFilter]);
 
   useEffect(() => {
-    // Initial load: fetch the user list once when the page mounts.
+    // Initial load: fetch the directory reference data once when the page mounts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadLookups();
+  }, [loadLookups]);
+
+  useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadUsers();
   }, [loadUsers]);
 
+  // Only the very first load is a full-page wait. Changing a filter or a page
+  // keeps the current rows on screen while the next window arrives, which stops
+  // the table from collapsing and re-expanding on every click.
+  const isFirstLoad = loading && total === null;
+
   function handleRetry() {
     setLoading(true);
+    void loadLookups();
     void loadUsers();
   }
-
-  const roleOptions = useMemo(() => roleOptionsFrom(users), [users]);
 
   const departmentNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -276,34 +418,37 @@ export default function ApproverUsersPage() {
     return map;
   }, [departments]);
 
-  const filteredUsers = useMemo(() => {
-    const term = search.trim().toLowerCase();
+  const hasActiveFilters =
+    search.trim().length > 0 ||
+    roleFilter !== "all" ||
+    departmentFilter !== ALL_DEPARTMENTS;
 
-    return users.filter((user) => {
-      if (roleFilter !== "all" && user.role !== roleFilter) {
-        return false;
-      }
+  function clearFilters() {
+    setSearchInput("");
+    setRoleFilter("all");
+    setDepartmentFilter(ALL_DEPARTMENTS);
+    resetToFirstPage();
+  }
 
-      if (!term) {
-        return true;
-      }
+  /**
+   * Filters live on the server, so every change has to go back to page 1.
+   * Otherwise page 3 of a 3-page result stays selected and the reader is shown
+   * an empty table for a search that does have matches.
+   */
+  function handleSearchChange(value: string) {
+    setSearchInput(value);
+    resetToFirstPage();
+  }
 
-      return (
-        user.full_name.toLowerCase().includes(term) ||
-        (user.employee_id ?? "").toLowerCase().includes(term)
-      );
-    });
-  }, [users, search, roleFilter]);
+  function handleRoleFilterChange(value: string) {
+    setRoleFilter(value);
+    resetToFirstPage();
+  }
 
-  const counts = useMemo(
-    () => ({
-      total: users.length,
-      approvers: users.filter((user) => user.role === "approver")
-        .length,
-      unassigned: users.filter((user) => !user.department_id).length,
-    }),
-    [users]
-  );
+  function handleDepartmentFilterChange(value: string) {
+    setDepartmentFilter(value);
+    resetToFirstPage();
+  }
 
   function getDepartmentName(departmentId: string | null) {
     if (!departmentId) {
@@ -417,10 +562,24 @@ export default function ApproverUsersPage() {
     }
 
     // Replace the row from what was actually stored, so the table never shows
-    // an optimistic value that was rejected or adjusted.
+    // an optimistic value that was rejected or adjusted. Only the row on this
+    // page is touched: the next page or filter is the database's to order.
     setUsers((current) =>
       current.map((user) => (user.id === updated.id ? updated : user))
     );
+
+    // The edited row may now belong to a different department or role, so the
+    // filtered result set is refetched rather than guessed at.
+    void loadLookups();
+
+    if (
+      roleFilter !== "all" ||
+      departmentFilter !== ALL_DEPARTMENTS ||
+      search.trim().length > 0
+    ) {
+      setRefreshing(true);
+      void loadUsers();
+    }
 
     setEditing(updated);
     setSaving(false);
@@ -507,12 +666,14 @@ export default function ApproverUsersPage() {
     const result = await response.json().catch(() => null);
 
     if (!response.ok || !result?.ok) {
+      // The code is logged, never shown: it is enough to tell a validation
+      // problem from a server fault without exposing anything about the server.
       console.error("Account creation error:", response.status, result?.code);
 
       setCreateError(
         typeof result?.error === "string" && result.error.length > 0
           ? result.error
-          : "Unable to create this account. Please try again."
+          : GENERIC_CREATE_ERROR
       );
 
       setCreating(false);
@@ -525,11 +686,19 @@ export default function ApproverUsersPage() {
 
     setCreatedNotice({ name: fullName, email });
 
-    // Refresh so the new account appears on its own, with no manual reload.
+    // The new account sorts into the directory by name, and the counts and
+    // selectable departments have changed, so everything is refetched. Filters
+    // are cleared and page 1 shown, which is the only place the new account is
+    // guaranteed to be visible.
+    clearFilters();
+
+    await loadLookups();
+
+    setRefreshing(true);
     await loadUsers();
   }
 
-  if (loading) {
+  if (isFirstLoad) {
     return (
       <div className="mx-auto w-full max-w-[1600px] space-y-6">
         <PageHeader title="User Management" />
@@ -628,13 +797,18 @@ export default function ApproverUsersPage() {
 
           <CardAction>
             <Badge variant="secondary" className="tabular-nums">
-              {filteredUsers.length} of {users.length}
+              {hasActiveFilters && total != null
+                ? `${total} matching`
+                : `${counts.total} total`}
             </Badge>
           </CardAction>
         </CardHeader>
 
-        <CardContent className="space-y-4 border-t border-border pt-4">
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <CardContent
+          className="space-y-4 border-t border-border pt-4"
+          aria-busy={refreshing}
+        >
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
             <div className="relative">
               <Search
                 className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
@@ -643,8 +817,10 @@ export default function ApproverUsersPage() {
 
               <Input
                 type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                value={searchInput}
+                onChange={(event) =>
+                  handleSearchChange(event.target.value)
+                }
                 placeholder="Search by name or employee ID..."
                 aria-label="Search accounts"
                 className="pl-8"
@@ -653,9 +829,11 @@ export default function ApproverUsersPage() {
 
             <NativeSelect
               value={roleFilter}
-              onChange={(event) => setRoleFilter(event.target.value)}
+              onChange={(event) =>
+                handleRoleFilterChange(event.target.value)
+              }
               aria-label="Filter by role"
-              className="w-full sm:w-48"
+              className="w-full sm:w-40"
             >
               <NativeSelectOption value="all">
                 All roles
@@ -667,35 +845,52 @@ export default function ApproverUsersPage() {
                 </NativeSelectOption>
               ))}
             </NativeSelect>
+
+            <NativeSelect
+              value={departmentFilter}
+              onChange={(event) =>
+                handleDepartmentFilterChange(event.target.value)
+              }
+              aria-label="Filter by department"
+              className="w-full sm:w-52"
+            >
+              <NativeSelectOption value={ALL_DEPARTMENTS}>
+                All departments
+              </NativeSelectOption>
+
+              {departments.map((department) => (
+                <NativeSelectOption key={department.id} value={department.id}>
+                  {department.name}
+                </NativeSelectOption>
+              ))}
+
+              <NativeSelectOption value={UNASSIGNED_DEPARTMENT}>
+                Not assigned
+              </NativeSelectOption>
+            </NativeSelect>
           </div>
 
-          {filteredUsers.length === 0 ? (
+          {users.length === 0 ? (
             <EmptyState
               icon={Users}
               title={
-                users.length === 0
+                counts.total === 0
                   ? "No accounts yet"
                   : "No matching accounts"
               }
               description={
-                users.length === 0
+                counts.total === 0
                   ? "Create the first account to get started."
-                  : "Try a different search term or clear the role filter."
+                  : "Try a different search term, or clear the role and department filters."
               }
               action={
-                users.length === 0 ? (
+                counts.total === 0 ? (
                   <Button onClick={openCreateDialog}>
                     <UserPlus className="size-4" />
                     Create Account
                   </Button>
                 ) : (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setSearch("");
-                      setRoleFilter("all");
-                    }}
-                  >
+                  <Button variant="outline" onClick={clearFilters}>
                     Clear filters
                   </Button>
                 )
@@ -704,7 +899,12 @@ export default function ApproverUsersPage() {
           ) : (
             <>
               {/* Tablet and desktop: a real table. */}
-              <div className="hidden md:block">
+              <div
+                className={cn(
+                  "hidden md:block",
+                  refreshing && "opacity-60"
+                )}
+              >
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -720,7 +920,7 @@ export default function ApproverUsersPage() {
                   </TableHeader>
 
                   <TableBody>
-                    {filteredUsers.map((user) => (
+                    {users.map((user) => (
                       <TableRow key={user.id}>
                         <TableCell className="whitespace-normal">
                           <div className="flex items-center gap-2.5">
@@ -794,8 +994,13 @@ export default function ApproverUsersPage() {
 
               {/* Mobile: stacked rows, so nothing is clipped and there is no
                   horizontal scrolling. */}
-              <ul className="space-y-3 md:hidden">
-                {filteredUsers.map((user) => (
+              <ul
+                className={cn(
+                  "space-y-3 md:hidden",
+                  refreshing && "opacity-60"
+                )}
+              >
+                {users.map((user) => (
                   <li
                     key={user.id}
                     className="flex items-start gap-3 rounded-lg border border-border p-3"
@@ -854,6 +1059,18 @@ export default function ApproverUsersPage() {
               </ul>
             </>
           )}
+
+          <DataPagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            totalPages={totalPages}
+            loaded={users.length}
+            onPageChange={goToPage}
+            itemLabel="account"
+            loading={refreshing}
+            className="border-t border-border pt-4"
+          />
         </CardContent>
       </Card>
 

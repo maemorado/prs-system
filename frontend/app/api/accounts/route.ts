@@ -4,6 +4,8 @@ import {
   assertApproverRequest,
   createAccountWithProfile,
   isAccountCreationConfigured,
+  reportMissingEnvVarsOnce,
+  toClientError,
 } from "@/src/lib/supabase/server-admin";
 
 /**
@@ -15,6 +17,26 @@ import {
  * happens on the server, and only the result crosses back to the client.
  */
 
+/**
+ * Node.js explicitly.
+ *
+ * The default already is, but this endpoint reads cookies through
+ * `next/headers` and talks to Supabase with a privileged key, so the runtime is
+ * stated rather than inherited. It is also what makes the deployment's function
+ * logs — the only place the missing-variable diagnostic is visible — come from
+ * a Node function instead of anywhere else.
+ */
+export const runtime = "nodejs";
+
+/**
+ * Always executed per request.
+ *
+ * Without this a cached response would be served from the environment in which
+ * the app was built, and the key this endpoint reads would never be looked up
+ * again after being configured on the deployment platform.
+ */
+export const dynamic = "force-dynamic";
+
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_PASSWORD_LENGTH = 72;
 const MAX_NAME_LENGTH = 120;
@@ -22,6 +44,10 @@ const MAX_NAME_LENGTH = 120;
 // Node's FormData/type helpers are not used; JSON keeps the payload explicit.
 export async function POST(request: Request) {
   if (!isAccountCreationConfigured()) {
+    // Server-side only: names the missing variables so whoever deploys can see
+    // exactly what to add. The browser is told nothing beyond "not available".
+    reportMissingEnvVarsOnce();
+
     return NextResponse.json(
       {
         error:
@@ -69,17 +95,16 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     if (error instanceof AccountCreationError) {
-      return NextResponse.json(
-        { error: error.message, code: error.code },
-        { status: error.status }
-      );
+      const { error: message, code, status } = toClientError(error);
+
+      return NextResponse.json({ error: message, code }, { status });
     }
 
     console.error("[create-account] unexpected error:", error);
 
     return NextResponse.json(
       {
-        error: "Something went wrong while creating the account. Please try again.",
+        error: "Unable to create the account. Please try again.",
         code: "unexpected",
       },
       { status: 500 }
