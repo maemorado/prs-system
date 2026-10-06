@@ -1188,9 +1188,31 @@ export default function ApproverUsersPage() {
                     <NativeSelect
                       id="new-role"
                       value={newRole}
-                      onChange={(event) =>
-                        setNewRole(event.target.value)
-                      }
+                      onChange={(event) => {
+                        const role = event.target.value;
+
+                        setNewRole(role);
+
+                        // Approvers belong to a department, and the business
+                        // default is Finance. Preselect it the moment the role
+                        // becomes approver and no department has been chosen,
+                        // so an approver is not silently created unassigned.
+                        // The server applies the same prefix match as a
+                        // fallback, so this is a convenience, not the
+                        // enforcement point.
+                        if (role === "approver" && !newDepartmentId) {
+                          const finance = departments.find(
+                            (department) =>
+                              department.name
+                                .toLowerCase()
+                                .startsWith("financ")
+                          );
+
+                          if (finance) {
+                            setNewDepartmentId(finance.id);
+                          }
+                        }
+                      }}
                       required
                       disabled={creating}
                       className="w-full"

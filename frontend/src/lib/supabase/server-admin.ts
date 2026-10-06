@@ -323,6 +323,27 @@ export async function createAccountWithProfile(input: {
 
   const userId = created.user.id;
 
+  // Approvers are expected to belong to a department, and the business default
+  // is Finance. If the request carried none, resolve it here — server-side,
+  // one lookup through the privileged client — instead of storing a
+  // department-less approver. An explicit choice is never overridden, and if
+  // Finance cannot be found the account is created unassigned rather than
+  // failing the whole request. The create dialog applies the same default in
+  // the UI so the two paths cannot diverge.
+  let departmentId = input.departmentId;
+
+  if (!departmentId && input.role === "approver") {
+    const { data: financeDepartment } = await admin
+      .from("departments")
+      .select("id")
+      .ilike("name", "financ%")
+      .order("name", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    departmentId = financeDepartment?.id ?? null;
+  }
+
   // The database has a trigger that creates the `profiles` row as soon as the
   // sign-in exists, so the row is normally already present here. An insert
   // would therefore always fail on the primary key, and the rollback below
@@ -336,7 +357,7 @@ export async function createAccountWithProfile(input: {
     full_name: input.fullName,
     employee_id: input.employeeId,
     role: input.role,
-    department_id: input.departmentId,
+    department_id: departmentId,
   };
 
   const { data: updatedRows, error: updateError } = await admin

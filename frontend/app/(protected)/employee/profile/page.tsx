@@ -287,7 +287,7 @@ export default function ProfilePage() {
         <PageHeader title="My Profile" />
         <ErrorState
           message={error}
-          onRetry={() => window.location.reload()}
+          onRetry={() => void loadProfile()}
         />
       </div>
     );
@@ -299,7 +299,7 @@ export default function ProfilePage() {
         <PageHeader title="My Profile" />
         <ErrorState
           message="Profile not found."
-          onRetry={() => window.location.reload()}
+          onRetry={() => void loadProfile()}
         />
       </div>
     );

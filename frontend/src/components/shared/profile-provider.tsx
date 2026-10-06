@@ -57,7 +57,22 @@ export const EDITABLE_PROFILE_FIELDS = [
 const PROFILE_COLUMNS =
   "id, full_name, employee_id, role, department_id";
 
-type Status = "loading" | "authenticated" | "unauthenticated";
+/**
+ * The five states a protected page can be in.
+ *
+ * They are deliberately distinct so a screen never has to guess:
+ *
+ * 1. `loading`         — auth is still resolving the session and profile.
+ * 2. `unauthenticated` — there is no session; the shell redirects to login.
+ * 3. `authenticated`   — session *and* profile row are loaded.
+ * 4. `error`           — a session exists but the profile could not be read;
+ *                        the shell shows a retry instead of a spinner.
+ *
+ * (`authenticated` covers "profile loaded"; the profile row itself is `null`
+ * only in `error`, which is what makes an infinite "still checking" state
+ * impossible once a request has failed.)
+ */
+type Status = "loading" | "authenticated" | "unauthenticated" | "error";
 
 type ProfileContextValue = {
   user: User | null;
@@ -110,60 +125,75 @@ export function ProfileProvider({
 
     const supabase = createClient();
 
-    const {
-      data: { user: currentUser },
-      error: authError,
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user: currentUser },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-    if (stale()) {
-      return;
-    }
+      if (stale()) {
+        return;
+      }
 
-    if (authError || !currentUser) {
+      if (authError || !currentUser) {
+        setUser(null);
+        setProfile(null);
+        setError("");
+        setStatus("unauthenticated");
+        return;
+      }
+
+      setUser(currentUser);
+
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select(PROFILE_COLUMNS)
+        .eq("id", currentUser.id)
+        .maybeSingle();
+
+      if (stale()) {
+        return;
+      }
+
+      if (profileError) {
+        console.error("Profile load error:", profileError);
+
+        setProfile(null);
+        setError(
+          friendlyError(profileError, "Unable to load your profile.")
+        );
+        setStatus("error");
+
+        return;
+      }
+
+      if (!profileData) {
+        // Authenticated, but no profile row. The app cannot route by role
+        // without one, so surface a clear, actionable message.
+        setProfile(null);
+        setError("Your profile could not be found. Please contact an administrator.");
+        setStatus("error");
+
+        return;
+      }
+
+      setProfile(profileData);
+      setError("");
+      setStatus("authenticated");
+    } catch (err) {
+      // An unexpected failure must not leave the shell on the spinner
+      // forever: it becomes the retryable error state like any other.
+      if (stale()) {
+        return;
+      }
+
+      console.error("Session load error:", err);
+
       setUser(null);
       setProfile(null);
-      setError("");
-      setStatus("unauthenticated");
-      return;
+      setError("Something went wrong while loading your session. Please try again.");
+      setStatus("error");
     }
-
-    setUser(currentUser);
-
-    const { data: profileData, error: profileError } = await supabase
-      .from("profiles")
-      .select(PROFILE_COLUMNS)
-      .eq("id", currentUser.id)
-      .maybeSingle();
-
-    if (stale()) {
-      return;
-    }
-
-    if (profileError) {
-      console.error("Profile load error:", profileError);
-
-      setProfile(null);
-      setError(
-        friendlyError(profileError, "Unable to load your profile.")
-      );
-      setStatus("authenticated");
-
-      return;
-    }
-
-    if (!profileData) {
-      // Authenticated, but no profile row. The app cannot route by role
-      // without one, so surface a clear, actionable message.
-      setProfile(null);
-      setError("Your profile could not be found. Please contact an administrator.");
-      setStatus("authenticated");
-
-      return;
-    }
-
-    setProfile(profileData);
-    setError("");
-    setStatus("authenticated");
   }, []);
 
   useEffect(() => {
@@ -185,11 +215,10 @@ export function ProfileProvider({
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
-      // Any session change invalidates whatever load is in flight, so a request
-      // issued for the previous session can never write into the new one.
-      loadToken.current += 1;
-
       if (event === "SIGNED_OUT") {
+        // Terminal state: nothing is in flight that could paint over it.
+        loadToken.current += 1;
+
         setUser(null);
         setProfile(null);
         setError("");
@@ -198,20 +227,15 @@ export function ProfileProvider({
         return;
       }
 
-      // Only events that can change *who* is signed in reset the profile.
-      //
-      // `INITIAL_SESSION` is deliberately excluded: it fires the moment this
-      // listener subscribes, and the mount effect above already performs that
-      // initial load. Handling it here would bump the token, throw away the
-      // in-flight first load and re-fetch the same row.
-      //
-      // `TOKEN_REFRESHED` is excluded too: it rotates the access token roughly
-      // hourly without changing identity, so clearing the profile there would
-      // blank the shell and flash the loading state on a timer.
+      // Only events that can change *who* is signed in reset the profile —
+      // and every invalidation schedules its replacement load, so a
+      // superseded response can never strand the shell in `loading`.
       if (event === "SIGNED_IN" || event === "USER_UPDATED") {
         // A different user (or a changed identity) is now active. Drop the old
         // profile and return to `loading` so protected pages never render the
         // previous user's data while the new one is being resolved.
+        loadToken.current += 1;
+
         setProfile(null);
         setError("");
         setStatus("loading");
@@ -224,7 +248,20 @@ export function ProfileProvider({
         }, 0);
 
         pendingLoads.current.push(timer);
+
+        return;
       }
+
+      // `INITIAL_SESSION` is emitted to *every* new subscriber the moment it
+      // subscribes, which is one tick after this provider's own first load has
+      // started. Bumping the load token here invalidated that in-flight
+      // request, and because no replacement was scheduled, nothing ever
+      // resolved the state again — the classic "logged in but the dashboard
+      // spins until I refresh". The session it reports is the same one the
+      // in-flight `getUser()` is already validating, so it is left alone.
+      //
+      // `TOKEN_REFRESHED` is likewise not an identity change: it rotates the
+      // access token roughly hourly and must not blank the shell.
     });
 
     return () => {

@@ -9,7 +9,6 @@ import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -21,7 +20,6 @@ import {
   CircleX,
   FileClock,
   FilePlus2,
-  FileText,
   Inbox,
   Receipt,
   TrendingUp,
@@ -31,7 +29,7 @@ import { PageHeader } from "@/src/components/shared/page-header";
 import { StatCard } from "@/src/components/shared/stat-card";
 import { PriorityBadge, StatusBadge } from "@/src/components/shared/badges";
 import { EmptyState, ErrorState, ListSkeleton } from "@/src/components/shared/state";
-import { formatAmount, formatDateTime } from "@/src/lib/format";
+import { formatAmount } from "@/src/lib/format";
 
 type PurchaseRequest = {
   id: string;
@@ -446,7 +444,7 @@ export default function DashboardPage() {
         </section>
 
         {/* ========================================
-            QUICK ACTIONS + STATUS
+            QUICK ACTIONS
         ======================================== */}
         <aside className="space-y-6">
           <Card>
@@ -480,54 +478,6 @@ export default function DashboardPage() {
                   </span>
                 </Link>
               ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="size-4 text-muted-foreground" />
-                Activity
-              </CardTitle>
-
-              <CardDescription>
-                Your account as the system sees it.
-              </CardDescription>
-
-              <CardAction>
-                <span className="text-xs font-medium capitalize text-muted-foreground">
-                  {profile?.role ?? "employee"}
-                </span>
-              </CardAction>
-            </CardHeader>
-
-            <CardContent className="space-y-3 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Signed in as</span>
-                <span className="truncate font-medium text-foreground">
-                  {displayName}
-                </span>
-              </div>
-
-              {profile?.employee_id && (
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Employee ID</span>
-                  <span className="font-medium text-foreground tabular-nums">
-                    {profile.employee_id}
-                  </span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">
-                  Last submission
-                </span>
-                <span className="font-medium text-foreground">
-                  {recentRequests.length > 0
-                    ? formatDateTime(recentRequests[0].submitted_at)
-                    : "None yet"}
-                </span>
-              </div>
             </CardContent>
           </Card>
         </aside>

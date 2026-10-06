@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { createClient } from "@/src/lib/supabase/client";
 import { useProfile } from "@/src/components/shared/profile-provider";
 import {
@@ -118,86 +118,93 @@ export default function ApproverProfilePage() {
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
 
-  useEffect(() => {
-    async function loadProfile() {
-      const supabase = createClient();
+  // Lifted out of the mount effect so the ErrorState retry buttons can re-run
+  // the same load in place (instead of a full `window.location.reload()`).
+  // It clears any previous error and shows the skeleton while re-loading.
+  const loadProfile = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    const supabase = createClient();
 
-      if (!user) {
-        setError("You are not authenticated.");
-        setLoading(false);
-        return;
-      }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      setEmail(user.email ?? "");
-      setMemberSince(user.created_at ?? "");
+    if (!user) {
+      setError("You are not authenticated.");
+      setLoading(false);
+      return;
+    }
 
-      const { data: profileData, error: profileError } =
-        await supabase
-          .from("profiles")
-          .select(
-            `
+    setEmail(user.email ?? "");
+    setMemberSince(user.created_at ?? "");
+
+    const { data: profileData, error: profileError } =
+      await supabase
+        .from("profiles")
+        .select(
+          `
             id,
             full_name,
             employee_id,
             role,
             department_id
           `
-          )
-          .eq("id", user.id)
-          .single();
+        )
+        .eq("id", user.id)
+        .single();
 
-      if (profileError) {
-        console.error("Profile error:", profileError);
-        setError(profileError.message);
-        setLoading(false);
-        return;
-      }
+    if (profileError) {
+      console.error("Profile error:", profileError);
+      setError(profileError.message);
+      setLoading(false);
+      return;
+    }
 
-      setProfile(profileData);
+    setProfile(profileData);
 
-      const { data: departmentsData, error: departmentsError } =
+    const { data: departmentsData, error: departmentsError } =
+      await supabase
+        .from("departments")
+        .select("id, name")
+        .order("name", { ascending: true });
+
+    if (departmentsError) {
+      console.error("Departments error:", departmentsError);
+    } else {
+      setDepartments(departmentsData ?? []);
+    }
+
+    setEditFullName(profileData.full_name);
+    setEditEmployeeId(profileData.employee_id ?? "");
+    setEditDepartmentId(profileData.department_id ?? "");
+
+    if (profileData.department_id) {
+      const { data: departmentData, error: departmentError } =
         await supabase
           .from("departments")
           .select("id, name")
-          .order("name", { ascending: true });
+          .eq("id", profileData.department_id)
+          .single();
 
-      if (departmentsError) {
-        console.error("Departments error:", departmentsError);
+      if (departmentError) {
+        console.error(
+          "Department error:",
+          departmentError
+        );
       } else {
-        setDepartments(departmentsData ?? []);
+        setDepartment(departmentData);
       }
-
-      setEditFullName(profileData.full_name);
-      setEditEmployeeId(profileData.employee_id ?? "");
-      setEditDepartmentId(profileData.department_id ?? "");
-
-      if (profileData.department_id) {
-        const { data: departmentData, error: departmentError } =
-          await supabase
-            .from("departments")
-            .select("id, name")
-            .eq("id", profileData.department_id)
-            .single();
-
-        if (departmentError) {
-          console.error(
-            "Department error:",
-            departmentError
-          );
-        } else {
-          setDepartment(departmentData);
-        }
-      }
-
-      setLoading(false);
     }
 
-    loadProfile();
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadProfile();
+  }, [loadProfile]);
 
   const confirmMismatch =
     confirmPassword.length > 0 && confirmPassword !== newPassword;
@@ -257,7 +264,7 @@ export default function ApproverProfilePage() {
         <PageHeader title="Profile" />
         <ErrorState
           message={error}
-          onRetry={() => window.location.reload()}
+          onRetry={() => void loadProfile()}
         />
       </div>
     );
@@ -269,7 +276,7 @@ export default function ApproverProfilePage() {
         <PageHeader title="Profile" />
         <ErrorState
           message="Profile not found."
-          onRetry={() => window.location.reload()}
+          onRetry={() => void loadProfile()}
         />
       </div>
     );
