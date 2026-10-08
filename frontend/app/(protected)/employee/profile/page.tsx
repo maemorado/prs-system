@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { createClient } from "@/src/lib/supabase/client";
+import { friendlyError } from "@/src/lib/errors";
 import { useProfile } from "@/src/components/shared/profile-provider";
 import {
   Card,
@@ -166,7 +167,7 @@ export default function ProfilePage() {
 
       if (profileError) {
         console.error("Profile error:", profileError);
-        setError(profileError.message);
+        setError(friendlyError(profileError, "Failed to load your profile."));
         return;
       }
 
@@ -215,7 +216,7 @@ export default function ProfilePage() {
       console.error("Profile load error:", err);
 
       setError(
-        err instanceof Error ? err.message : "Failed to load your profile."
+        friendlyError(err, "Failed to load your profile.")
       );
     } finally {
       if (!silent) {
@@ -262,7 +263,9 @@ export default function ProfilePage() {
     setSubmitting(false);
 
     if (updateError) {
-      setPasswordError(updateError.message);
+      setPasswordError(
+        friendlyError(updateError, "Unable to update your password.")
+      );
       return;
     }
 
@@ -385,7 +388,7 @@ export default function ProfilePage() {
         <CardContent className="border-t border-border pt-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <Avatar size="lg" className="size-14 sm:size-16">
-              <AvatarFallback className="bg-indigo-100 text-base font-semibold text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
+              <AvatarFallback className="bg-primary/10 text-base font-semibold text-primary">
                 {initials}
               </AvatarFallback>
             </Avatar>
@@ -468,7 +471,7 @@ export default function ProfilePage() {
               <div className="space-y-2">
                 <Label>Email</Label>
 
-                <p className="rounded-lg border border-border bg-muted/40 px-2.5 py-[5px] text-sm break-words text-muted-foreground">
+                <p className="flex min-h-9 items-center rounded-lg border border-border bg-muted/40 px-3 text-sm break-words text-muted-foreground">
                   {email || "No email available"}
                 </p>
               </div>
@@ -476,7 +479,7 @@ export default function ProfilePage() {
               <div className="space-y-2">
                 <Label>Role</Label>
 
-                <p className="rounded-lg border border-border bg-muted/40 px-2.5 py-[5px] text-sm text-muted-foreground">
+                <p className="flex min-h-9 items-center rounded-lg border border-border bg-muted/40 px-3 text-sm text-muted-foreground">
                   {capitalize(profile.role)}
                 </p>
               </div>
@@ -521,7 +524,7 @@ export default function ProfilePage() {
 
                 {/* Read-only by business rule: an approver assigns and changes
                     an employee's department through User Management. */}
-                <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-[5px] text-sm">
+                <div className="flex min-h-9 items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 text-sm">
                   <Building2
                     className="size-4 shrink-0 text-muted-foreground"
                     aria-hidden="true"

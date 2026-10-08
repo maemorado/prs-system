@@ -121,7 +121,7 @@ export default function RequestsPage() {
     } catch (err) {
       console.error("Unexpected requests error:", err);
 
-      setError(err instanceof Error ? err.message : "Failed to load requests.");
+      setError(friendlyError(err, "Failed to load requests."));
     } finally {
       setLoading(false);
       setRefreshing(false);

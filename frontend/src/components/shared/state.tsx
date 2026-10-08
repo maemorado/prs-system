@@ -6,9 +6,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function PageLoader({ label }: { label?: string }) {
   return (
-    <div className="flex min-h-[60dvh] flex-col items-center justify-center gap-3">
-      <span className="flex size-11 items-center justify-center rounded-full bg-muted">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+    <div className="flex min-h-[60dvh] flex-col items-center justify-center gap-4">
+      <span className="flex size-12 items-center justify-center rounded-full bg-primary/10">
+        <Loader2 className="size-5 animate-spin text-primary" />
       </span>
 
       {label && <p className="text-sm text-muted-foreground">{label}</p>}
@@ -22,14 +22,12 @@ export function StatsSkeleton() {
       {Array.from({ length: 4 }).map((_, index) => (
         <div
           key={index}
-          className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4"
+          className="flex flex-col rounded-xl border border-border bg-card p-5"
           aria-hidden="true"
         >
-          <Skeleton className="size-10 shrink-0 rounded-lg" />
-          <div className="space-y-2">
-            <Skeleton className="h-3 w-20" />
-            <Skeleton className="h-5 w-12" />
-          </div>
+          <Skeleton className="size-10 rounded-lg" />
+          <Skeleton className="mt-4 h-8 w-16" />
+          <Skeleton className="mt-2 h-3.5 w-24" />
         </div>
       ))}
     </div>
@@ -42,7 +40,7 @@ export function ListSkeleton({ rows = 3 }: { rows?: number }) {
       {Array.from({ length: rows }).map((_, index) => (
         <div
           key={index}
-          className="rounded-xl border border-border/60 bg-card p-4"
+          className="rounded-xl border border-border bg-card p-5"
         >
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1 space-y-2">
@@ -53,7 +51,7 @@ export function ListSkeleton({ rows = 3 }: { rows?: number }) {
             <Skeleton className="h-6 w-24 shrink-0 rounded-full" />
           </div>
 
-          <div className="mt-4 flex items-center justify-between border-t border-border/60 pt-3">
+          <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
             <Skeleton className="h-3 w-40" />
             <Skeleton className="h-4 w-16" />
           </div>
@@ -66,16 +64,16 @@ export function ListSkeleton({ rows = 3 }: { rows?: number }) {
 export function CardSkeleton() {
   return (
     <div className="space-y-4" aria-hidden="true">
-      <div className="rounded-xl border border-border/60 bg-card p-5">
+      <div className="rounded-xl border border-border bg-card p-5">
         <Skeleton className="h-4 w-36" />
         <div className="mt-4 space-y-3">
-          <Skeleton className="h-8 w-full rounded-lg" />
-          <Skeleton className="h-8 w-full rounded-lg" />
-          <Skeleton className="h-8 w-2/3 rounded-lg" />
+          <Skeleton className="h-9 w-full rounded-lg" />
+          <Skeleton className="h-9 w-full rounded-lg" />
+          <Skeleton className="h-9 w-2/3 rounded-lg" />
         </div>
       </div>
 
-      <div className="rounded-xl border border-border/60 bg-card p-5">
+      <div className="rounded-xl border border-border bg-card p-5">
         <Skeleton className="h-4 w-28" />
         <div className="mt-4 space-y-3">
           {Array.from({ length: 3 }).map((_, index) => (
@@ -98,10 +96,10 @@ export function TableSkeleton({
 
   return (
     <div
-      className="overflow-hidden rounded-xl border border-border/60 bg-card"
+      className="overflow-hidden rounded-xl border border-border bg-card"
       aria-hidden="true"
     >
-      <div className="flex items-center gap-4 border-b border-border/60 bg-muted/40 px-4 py-3.5 dark:bg-muted/20">
+      <div className="flex items-center gap-4 border-b border-border bg-muted/60 px-4 py-3.5">
         {Array.from({ length: columns }).map((_, index) => (
           <Skeleton
             key={index}
@@ -113,7 +111,7 @@ export function TableSkeleton({
       {Array.from({ length: rows }).map((_, rowIndex) => (
         <div
           key={rowIndex}
-          className="flex items-center gap-4 border-b border-border/60 px-4 py-3.5 last:border-b-0"
+          className="flex items-center gap-4 border-b border-border px-4 py-4 last:border-b-0"
         >
           {Array.from({ length: columns }).map((_, columnIndex) => (
             <Skeleton
@@ -148,17 +146,17 @@ export function ErrorState({
   return (
     <div
       role="alert"
-      className="flex flex-col items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-5"
+      className="flex flex-col items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-5"
     >
       <div className="flex items-center gap-2 text-destructive">
         <span className="flex size-7 items-center justify-center rounded-full bg-destructive/10">
           <TriangleAlert className="size-4" />
         </span>
 
-        <p className="text-sm font-medium">{title}</p>
+        <p className="text-sm font-semibold">{title}</p>
       </div>
 
-      <p className="text-sm text-foreground/80">{message}</p>
+      <p className="text-sm text-foreground/90">{message}</p>
 
       {onRetry && (
         <Button
@@ -193,18 +191,18 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed px-6 py-12 text-center",
+        "flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card/50 px-6 py-14 text-center",
         className
       )}
     >
       {Icon && (
-        <span className="flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
           <Icon className="size-5" />
         </span>
       )}
 
       <div className="space-y-1">
-        <p className="text-sm font-semibold text-foreground">{title}</p>
+        <p className="text-base font-semibold text-foreground">{title}</p>
 
         {description && (
           <p className="mx-auto max-w-sm text-sm text-muted-foreground">

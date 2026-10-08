@@ -378,7 +378,7 @@ export default function ApproverUsersPage() {
       console.error("User management load error:", err);
 
       setError(
-        err instanceof Error ? err.message : "Failed to load accounts."
+        friendlyError(err, "Failed to load accounts.")
       );
     } finally {
       setLoading(false);

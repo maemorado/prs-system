@@ -19,10 +19,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={cn("font-sans", geist.variable)} suppressHydrationWarning>
-      <body>
+      <body className="bg-background text-foreground antialiased">
         <Providers>
           {children}
-          <Toaster position="top-right" richColors closeButton />
+          <Toaster position="top-right" closeButton />
         </Providers>
       </body>
     </html>

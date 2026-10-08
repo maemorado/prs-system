@@ -1,32 +1,38 @@
 import { cn } from "cn";
+import { Check, Circle, Minus, X, type LucideIcon } from "lucide-react";
 import { capitalize } from "@/src/lib/format";
 
-const statusStyles: Record<string, { className: string; dot: string }> = {
+/**
+ * Status is never communicated by color alone: each state carries a distinct
+ * icon as well, so it stays readable for anyone who cannot distinguish the
+ * muted status hues.
+ */
+const statusStyles: Record<
+  string,
+  { className: string; icon: LucideIcon }
+> = {
   pending: {
-    className:
-      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400",
-    dot: "bg-amber-500",
+    className: "border-warning/30 bg-warning/10 text-warning",
+    icon: Circle,
   },
   approved: {
-    className:
-      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400",
-    dot: "bg-emerald-500",
+    className: "border-success/30 bg-success/10 text-success",
+    icon: Check,
   },
   rejected: {
-    className:
-      "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400",
-    dot: "bg-red-500",
+    className: "border-destructive/30 bg-destructive/10 text-destructive",
+    icon: X,
   },
 };
 
 const defaultStatus = {
-  className:
-    "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-600/40 dark:bg-slate-500/10 dark:text-slate-300",
-  dot: "bg-slate-400",
+  className: "border-border bg-muted text-muted-foreground",
+  icon: Minus,
 };
 
 export function StatusBadge({ status }: { status: string }) {
   const config = statusStyles[status.toLowerCase()] ?? defaultStatus;
+  const Icon = config.icon;
 
   return (
     <span
@@ -35,25 +41,26 @@ export function StatusBadge({ status }: { status: string }) {
         config.className
       )}
     >
-      <span className={cn("size-1.5 rounded-full", config.dot)} />
+      <Icon
+        className={cn(
+          "size-3",
+          config === statusStyles.pending && "fill-current"
+        )}
+      />
       {capitalize(status)}
     </span>
   );
 }
 
 const priorityStyles: Record<string, string> = {
-  urgent:
-    "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400",
-  high: "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-400",
-  normal:
-    "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300",
-  medium:
-    "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300",
-  low: "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-600/40 dark:bg-slate-500/10 dark:text-slate-300",
+  urgent: "border-destructive/30 bg-destructive/10 text-destructive",
+  high: "border-warning/30 bg-warning/10 text-warning",
+  normal: "border-info/30 bg-info/10 text-info",
+  medium: "border-info/30 bg-info/10 text-info",
+  low: "border-border bg-muted text-muted-foreground",
 };
 
-const defaultPriority =
-  "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-600/40 dark:bg-slate-500/10 dark:text-slate-300";
+const defaultPriority = "border-border bg-muted text-muted-foreground";
 
 export function PriorityBadge({ priority }: { priority: string }) {
   if (!priority) {

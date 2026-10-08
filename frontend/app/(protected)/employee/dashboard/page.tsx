@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/src/lib/supabase/client";
+import { friendlyError } from "@/src/lib/errors";
 import { useProfile } from "@/src/components/shared/profile-provider";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cn } from "cn";
@@ -192,7 +193,7 @@ export default function DashboardPage() {
     } catch (err) {
       console.error("Dashboard error:", err);
 
-      setError(err instanceof Error ? err.message : "Failed to load dashboard.");
+      setError(friendlyError(err, "Failed to load dashboard."));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -463,7 +464,7 @@ export default function DashboardPage() {
                   href={action.href}
                   className="flex items-start gap-3 rounded-lg p-2.5 transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                     <action.icon className="size-4" />
                   </span>
 

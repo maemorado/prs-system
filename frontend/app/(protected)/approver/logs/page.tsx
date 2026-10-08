@@ -193,7 +193,7 @@ export default function AdminLogsPage() {
       console.error("Unexpected logs error:", err);
 
       setError(
-        err instanceof Error ? err.message : "Failed to load approval history."
+        friendlyError(err, "Failed to load approval history.")
       );
     } finally {
       setLoading(false);

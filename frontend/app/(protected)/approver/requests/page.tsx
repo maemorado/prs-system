@@ -157,9 +157,7 @@ export default function AdminRequestsPage() {
       console.error("Unexpected requests error:", err);
 
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load requests."
+        friendlyError(err, "Failed to load requests.")
       );
     } finally {
       setLoading(false);

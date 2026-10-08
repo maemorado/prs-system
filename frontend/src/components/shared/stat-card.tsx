@@ -21,27 +21,22 @@ type StatCardProps = {
 
 const tones: Record<
   NonNullable<StatCardProps["tone"]>,
-  { icon: string; value: string }
+  { icon: string }
 > = {
   default: {
     icon: "bg-muted text-muted-foreground",
-    value: "text-foreground",
   },
   primary: {
-    icon: "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400",
-    value: "text-foreground",
+    icon: "bg-primary/10 text-primary",
   },
   pending: {
-    icon: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400",
-    value: "text-amber-600 dark:text-amber-400",
+    icon: "bg-warning/10 text-warning",
   },
   approved: {
-    icon: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400",
-    value: "text-emerald-600 dark:text-emerald-400",
+    icon: "bg-success/10 text-success",
   },
   rejected: {
-    icon: "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400",
-    value: "text-red-600 dark:text-red-400",
+    icon: "bg-destructive/10 text-destructive",
   },
 };
 
@@ -56,7 +51,7 @@ export function StatCard({
   const classes = tones[tone];
 
   const body = (
-    <div className="flex items-center gap-3 px-(--card-spacing)">
+    <div className="flex flex-col px-(--card-spacing)">
       <span
         className={cn(
           "flex size-10 shrink-0 items-center justify-center rounded-lg",
@@ -66,30 +61,21 @@ export function StatCard({
         <Icon className="size-5" />
       </span>
 
-      <div className="min-w-0">
-        <p className="truncate text-xs font-medium text-muted-foreground">
-          {label}
-        </p>
+      <p className="mt-4 text-3xl leading-none font-semibold tracking-tight text-foreground tabular-nums">
+        {value ?? "—"}
+      </p>
 
-        <p
-          className={cn(
-            "text-2xl font-semibold tabular-nums",
-            classes.value
-          )}
-        >
-          {value ?? "—"}
-        </p>
+      <p className="mt-2 text-sm font-medium text-foreground/80">{label}</p>
 
-        {hint && (
-          <p className="truncate text-xs text-muted-foreground">{hint}</p>
-        )}
-      </div>
+      {hint && (
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">{hint}</p>
+      )}
     </div>
   );
 
   if (href) {
     return (
-      <Card className="gap-3 transition-colors hover:bg-muted/40" size="sm">
+      <Card className="transition-colors hover:ring-primary/30">
         <Link
           href={href}
           className="rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -100,9 +86,5 @@ export function StatCard({
     );
   }
 
-  return (
-    <Card className="gap-3" size="sm">
-      {body}
-    </Card>
-  );
+return <Card>{body}</Card>;
 }

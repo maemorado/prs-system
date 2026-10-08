@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
+import { friendlyError } from "@/src/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Inbox } from "lucide-react";
@@ -90,7 +91,7 @@ export default function RequestDetailsPage() {
 
       if (requestError) {
         console.error("Request error:", requestError);
-        setError(requestError.message);
+        setError(friendlyError(requestError, "Failed to load the request."));
         setLoading(false);
         return;
       }
@@ -113,7 +114,7 @@ export default function RequestDetailsPage() {
 
       if (itemError) {
         console.error("Items error:", itemError);
-        setError(itemError.message);
+        setError(friendlyError(itemError, "Failed to load the request items."));
         setLoading(false);
         return;
       }

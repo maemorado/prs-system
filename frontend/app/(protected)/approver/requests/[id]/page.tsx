@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
+import { friendlyError } from "@/src/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -126,7 +127,9 @@ export default function ApproverRequestDetailsPage() {
       } = await supabase.auth.getUser();
 
       if (authError) {
-        throw new Error(authError.message);
+        throw new Error(
+          friendlyError(authError, "Authentication failed. Please sign in again.")
+        );
       }
 
       if (!user) {
@@ -165,7 +168,7 @@ export default function ApproverRequestDetailsPage() {
         );
 
         throw new Error(
-          requestError.message
+          friendlyError(requestError, "Failed to load the request.")
         );
       }
 
@@ -207,7 +210,7 @@ export default function ApproverRequestDetailsPage() {
         );
 
         throw new Error(
-          itemError.message
+          friendlyError(itemError, "Failed to load the request items.")
         );
       }
 
@@ -347,7 +350,7 @@ export default function ApproverRequestDetailsPage() {
 
       if (authError) {
         throw new Error(
-          authError.message
+          friendlyError(authError, "Authentication failed. Please sign in again.")
         );
       }
 
@@ -398,7 +401,7 @@ export default function ApproverRequestDetailsPage() {
         );
 
         throw new Error(
-          updateError.message
+          friendlyError(updateError, "Unable to update the request.")
         );
       }
 
@@ -430,7 +433,10 @@ export default function ApproverRequestDetailsPage() {
         );
 
         throw new Error(
-          `Request was approved, but the approval log failed: ${logError.message}`
+          friendlyError(
+            logError,
+            "Request was approved, but the approval log could not be saved."
+          )
         );
       }
 
@@ -499,7 +505,9 @@ export default function ApproverRequestDetailsPage() {
       } = await supabase.auth.getUser();
 
       if (authError) {
-        throw new Error(authError.message);
+        throw new Error(
+          friendlyError(authError, "Authentication failed. Please sign in again.")
+        );
       }
 
       if (!user) {
@@ -515,7 +523,10 @@ export default function ApproverRequestDetailsPage() {
 
       if (approverError) {
         throw new Error(
-          `Unable to verify approver role: ${approverError.message}`
+          friendlyError(
+            approverError,
+            "Unable to verify your approver role."
+          )
         );
       }
 
@@ -554,7 +565,7 @@ export default function ApproverRequestDetailsPage() {
         );
 
         throw new Error(
-          updateError.message
+          friendlyError(updateError, "Unable to update the request.")
         );
       }
 
@@ -582,7 +593,10 @@ export default function ApproverRequestDetailsPage() {
         );
 
         throw new Error(
-          `Request was rejected, but the rejection log failed: ${logError.message}`
+          friendlyError(
+            logError,
+            "Request was rejected, but the rejection log could not be saved."
+          )
         );
       }
 
@@ -841,7 +855,7 @@ export default function ApproverRequestDetailsPage() {
                     type="button"
                     onClick={handleApprove}
                     disabled={actionLoading}
-                    className="bg-emerald-600 text-white hover:bg-emerald-500"
+                    className="bg-success text-success-foreground hover:bg-success/90"
                   >
                     <CheckCircle2 />
                     {approving
@@ -854,7 +868,7 @@ export default function ApproverRequestDetailsPage() {
                     variant="outline"
                     onClick={handleReject}
                     disabled={actionLoading}
-                    className="text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+                    className="text-destructive hover:bg-destructive/10"
                   >
                     <XCircle />
                     {rejecting

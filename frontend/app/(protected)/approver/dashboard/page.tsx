@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/src/lib/supabase/client";
+import { friendlyError } from "@/src/lib/errors";
 import { useProfile } from "@/src/components/shared/profile-provider";
 import { countProfiles, countRequestsByStatus } from "@/src/lib/queries";
 import { cn } from "cn";
@@ -142,9 +143,7 @@ export default function ApproverDashboardPage() {
       console.error("Unexpected dashboard error:", err);
 
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load the dashboard summary."
+        friendlyError(err, "Failed to load the dashboard summary.")
       );
     } finally {
       setLoading(false);
@@ -208,8 +207,8 @@ export default function ApproverDashboardPage() {
 
   const quickActions = [
     {
-      label: "Review Requests",
-      description: "Open the request review page to approve or reject.",
+      label: "Purchase Requests",
+      description: "Browse every purchase request in the system.",
       href: "/approver/requests",
       icon: ClipboardCheck,
     },
@@ -369,7 +368,7 @@ export default function ApproverDashboardPage() {
                 href={action.href}
                 className="flex items-start gap-3 rounded-lg p-2.5 transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <action.icon className="size-4" />
                 </span>
 

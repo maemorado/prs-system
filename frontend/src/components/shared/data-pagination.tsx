@@ -40,6 +40,41 @@ type DataPaginationProps = {
  * The row range is a live region, because on a server-paginated list the count
  * of what is on screen changes without the page navigating.
  */
+
+/**
+ * Page numbers to render, with `"ellipsis"` for a gap. Kept to a small,
+ * predictable window around the current page so the control never grows with
+ * the number of pages.
+ */
+function pageItems(
+  current: number,
+  total: number
+): (number | "ellipsis")[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, index) => index + 1);
+  }
+
+  const items: (number | "ellipsis")[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+
+  if (start > 2) {
+    items.push("ellipsis");
+  }
+
+  for (let pageNumber = start; pageNumber <= end; pageNumber += 1) {
+    items.push(pageNumber);
+  }
+
+  if (end < total - 1) {
+    items.push("ellipsis");
+  }
+
+  items.push(total);
+
+  return items;
+}
+
 export function DataPagination({
   page,
   pageSize,
@@ -111,8 +146,8 @@ export function DataPagination({
         )}
       </p>
 
-      <div className="flex items-center gap-2">
-        <p className="mr-auto text-xs text-muted-foreground tabular-nums sm:mr-2 sm:mr-0">
+      <div className="flex items-center gap-1.5">
+        <p className="mr-auto text-xs text-muted-foreground tabular-nums">
           {totalPages == null
             ? `Page ${page}`
             : `Page ${page} of ${totalPages}`}
@@ -130,6 +165,36 @@ export function DataPagination({
           <span className="hidden sm:inline">Previous</span>
           <span className="sr-only sm:hidden">Previous</span>
         </Button>
+
+        {totalPages != null && totalPages > 1 && (
+          <nav aria-label="Pagination" className="hidden items-center gap-1 md:flex">
+            {pageItems(page, totalPages).map((item) =>
+              item === "ellipsis" ? (
+                <span
+                  key={`ellipsis-${page}`}
+                  aria-hidden="true"
+                  className="px-1 text-xs text-muted-foreground"
+                >
+                  &hellip;
+                </span>
+              ) : (
+                <Button
+                  key={item}
+                  type="button"
+                  variant={item === page ? "default" : "outline"}
+                  size="icon-sm"
+                  className="tabular-nums"
+                  onClick={() => onPageChange(item)}
+                  disabled={controlsDisabled}
+                  aria-label={`Go to page ${item}`}
+                  aria-current={item === page ? "page" : undefined}
+                >
+                  {item}
+                </Button>
+              )
+            )}
+          </nav>
+        )}
 
         <Button
           type="button"

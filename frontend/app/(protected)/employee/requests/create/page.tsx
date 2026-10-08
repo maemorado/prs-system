@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
+import { friendlyError } from "@/src/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -230,13 +231,9 @@ export default function CreateRequestPage() {
         err
       );
 
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError(
-          "Failed to create purchase request."
-        );
-      }
+      setError(
+        friendlyError(err, "Unable to create the request. Please try again.")
+      );
     } finally {
       setLoading(false);
     }

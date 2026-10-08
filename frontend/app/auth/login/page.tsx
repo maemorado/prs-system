@@ -7,9 +7,10 @@ import { friendlyError } from "@/src/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ThemeToggle } from "@/src/components/shared/theme-toggle";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ClipboardList, TriangleAlert } from "lucide-react";
+import { Check, ClipboardList, TriangleAlert } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -157,20 +158,29 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="grid min-h-dvh lg:grid-cols-2">
+    <div className="relative grid min-h-dvh lg:grid-cols-2">
+      <div className="absolute top-3 right-3 z-10">
+        <ThemeToggle />
+      </div>
       {/* Brand panel */}
-      <div className="relative hidden overflow-hidden bg-indigo-600 lg:flex lg:flex-col lg:justify-between lg:p-12">
+      <div className="relative hidden overflow-hidden bg-primary text-primary-foreground lg:flex lg:flex-col lg:justify-between lg:p-12">
+        {/* Soft light blooms, kept well inside the panel so nothing bleeds
+            past its edge and no copy ever sits on a busy area. */}
         <div
-          className="absolute -top-24 -right-24 size-96 rounded-full bg-indigo-500/40 blur-3xl"
+          className="absolute -top-24 -left-24 size-96 rounded-full bg-white/15 blur-3xl"
           aria-hidden="true"
         />
         <div
-          className="absolute -bottom-32 -left-16 size-96 rounded-full bg-indigo-400/30 blur-3xl"
+          className="absolute -right-32 bottom-0 size-[28rem] rounded-full bg-secondary/25 blur-3xl"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute inset-0 bg-[repeating-linear-gradient(135deg,rgba(255,255,255,0.05)_0px,rgba(255,255,255,0.05)_1px,transparent_1px,transparent_16px)]"
           aria-hidden="true"
         />
 
-        <div className="relative flex items-center gap-3 text-white">
-          <span className="flex size-10 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/20">
+        <div className="relative flex items-center gap-3">
+          <span className="flex size-10 items-center justify-center rounded-lg bg-sidebar-primary/20 text-sidebar-primary ring-1 ring-sidebar-primary/30">
             <ClipboardList className="size-5" />
           </span>
           <span className="text-lg font-semibold tracking-tight">
@@ -178,83 +188,109 @@ export default function LoginPage() {
           </span>
         </div>
 
-        <div className="relative max-w-md space-y-4 text-white">
+        <div className="relative max-w-md space-y-5">
           <h1 className="text-3xl leading-tight font-semibold tracking-tight">
             Streamline how your organization requests and approves purchases.
           </h1>
 
-          <p className="text-sm leading-relaxed text-indigo-100">
+          <p className="text-sm leading-relaxed text-primary-foreground/85">
             Submit purchase requests, track their status in real time, and let
             approvers review them in one centralized workspace.
           </p>
+
+          <ul className="space-y-2.5 pt-1 text-sm text-primary-foreground/90">
+            {[
+              "Submit and track requests in one place",
+              "Approvers review with full context",
+              "Departments, categories, and a clear audit trail",
+            ].map((feature) => (
+              <li key={feature} className="flex items-start gap-2.5">
+                <Check className="mt-0.5 size-4 shrink-0 text-primary-foreground" />
+                <span>{feature}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        <p className="relative text-xs text-indigo-100/70">
+        <p className="relative text-xs text-primary-foreground/70">
           Employee &amp; Approver Portal
         </p>
       </div>
 
       {/* Login form */}
-      <div className="flex items-center justify-center bg-muted/40 px-4 py-12 sm:px-6 lg:px-12">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <span className="mb-2 flex size-11 items-center justify-center rounded-lg bg-indigo-600 text-white">
-              <ClipboardList className="size-5" />
+      <div className="flex items-center justify-center bg-muted/50 px-4 py-12 sm:px-6 lg:px-12">
+        <div className="w-full max-w-md">
+          {/* The brand panel is desktop-only, so carry the identity over to
+              small screens instead of showing an anonymous form. */}
+          <div className="mb-6 flex items-center gap-3 lg:hidden">
+            <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <ClipboardList className="size-4" />
             </span>
+            <span className="text-base font-semibold tracking-tight">
+              Purchase Request System
+            </span>
+          </div>
 
-            <CardTitle className="text-xl">Welcome back</CardTitle>
+          <Card className="w-full shadow-xs">
+            <CardHeader>
+              <span className="mb-2 flex size-11 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <ClipboardList className="size-5" />
+              </span>
 
-            <CardDescription>
-              Sign in to access your purchase request workspace.
-            </CardDescription>
-          </CardHeader>
+              <CardTitle className="text-xl">Welcome back</CardTitle>
 
-          <CardContent>
-            <form onSubmit={handleLogin} className="space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+              <CardDescription>
+                Sign in to access your purchase request workspace.
+              </CardDescription>
+            </CardHeader>
 
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@company.com"
-                  autoComplete="email"
-                  required
-                  disabled={loading}
-                />
-              </div>
+            <CardContent>
+              <form onSubmit={handleLogin} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
 
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@company.com"
+                    autoComplete="email"
+                    required
+                    disabled={loading}
+                  />
+                </div>
 
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  required
-                  disabled={loading}
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
 
-              {error && (
-                <Alert variant="destructive">
-                  <TriangleAlert className="size-4" />
-                  <AlertTitle>Unable to sign in</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    required
+                    disabled={loading}
+                  />
+                </div>
 
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Signing in..." : "Sign In"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+                {error && (
+                  <Alert variant="destructive">
+                    <TriangleAlert className="size-4" />
+                    <AlertTitle>Unable to sign in</AlertTitle>
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? "Signing in..." : "Sign In"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

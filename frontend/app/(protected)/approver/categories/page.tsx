@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/src/lib/supabase/client";
+import { friendlyError } from "@/src/lib/errors";
 import { Tags, ArrowLeft, CheckCircle2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,7 +61,7 @@ export default function AdminCategoriesPage() {
         error
       );
 
-      setError(error.message);
+      setError(friendlyError(error, "Failed to load categories."));
       return;
     }
 
@@ -110,7 +111,7 @@ export default function AdminCategoriesPage() {
         error
       );
 
-      setError(error.message);
+      setError(friendlyError(error, "Unable to add the category."));
       setSaving(false);
       return;
     }
@@ -202,7 +203,7 @@ export default function AdminCategoriesPage() {
       )}
 
       {success && (
-        <div className="flex items-start gap-2 rounded-lg border border-emerald-600/30 bg-emerald-50 p-4 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+        <div className="flex items-start gap-2 rounded-lg border border-success/30 bg-success/10 p-4 text-sm text-success">
           <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
           <span>{success}</span>
         </div>
@@ -317,7 +318,7 @@ export default function AdminCategoriesPage() {
                               )
                             }
                             aria-label={`Delete ${category.name}`}
-                            className="text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+                            className="text-destructive hover:bg-destructive/10"
                           >
                             <Trash2 className="size-4" />
                           </Button>
